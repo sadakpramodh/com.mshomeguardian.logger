@@ -1,0 +1,32 @@
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.gradle/
+local.properties
+.DS_Store
+/build/
+.cxx/
+
+# Sensitive files
+keys.properties
+app/google-services.json
+
+# Large models and assets
+app/src/main/assets/*
+*.zip
+*.pb
+*.wav
+*.mp3
+
+# WorkManager schema
+app/schemas/
+
+# Git-specific
+*.log
+*.swp
+
+# OS files
+Thumbs.db
+desktop.ini
+
+java_pid14660.hprof

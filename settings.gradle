@@ -1,0 +1,2 @@
+rootProject.name = "com.mshomeguardian.logger"
+include ':app'
