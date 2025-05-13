@@ -6,12 +6,21 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [LocationEntity::class],
+    entities = [
+        LocationEntity::class,
+        CallLogEntity::class,
+        MessageEntity::class,
+        DeviceInfoEntity::class
+    ],
     version = 1,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
+    // DAOs
     abstract fun locationDao(): LocationDao
+    abstract fun callLogDao(): CallLogDao
+    abstract fun messageDao(): MessageDao
+    abstract fun deviceInfoDao(): DeviceInfoDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -22,7 +31,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "logger_database"
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration() // For simplicity during development
+                    .build().also { INSTANCE = it }
             }
         }
     }

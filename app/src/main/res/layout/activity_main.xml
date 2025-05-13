@@ -6,9 +6,54 @@
     android:padding="16dp">
 
     <TextView
+        android:id="@+id/deviceIdText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Device ID: Loading..."
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
         android:id="@+id/statusText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Initializing..."
-        android:textSize="18sp" />
+        android:text="Checking permissions..."
+        android:textSize="16sp"
+        android:layout_marginBottom="24dp" />
+
+    <Button
+        android:id="@+id/permissionsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Grant Permissions"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/syncButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Sync Now"
+        android:enabled="false" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#CCCCCC"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Home Guardian is running in the background. It will collect location, call logs, and messages every 15 minutes and securely store them."
+        android:textSize="14sp"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="You can close this app and the monitoring will continue in the background."
+        android:textSize="14sp"
+        android:textStyle="italic" />
 </LinearLayout>

@@ -1,25 +1,40 @@
 package com.mshomeguardian.logger
 
 import android.app.Application
+import android.content.Context
+import android.util.Log
+import androidx.multidex.MultiDex
+import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.WorkManagerInitializer
 
-
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-
-@Entity(tableName = "location_table")
-data class LocationEntity(
-    @PrimaryKey val timestamp: Long,
-    val latitude: Double,
-    val longitude: Double
-)
-
-
+/**
+ * Main Application class with MultiDex support
+ */
 class LoggerApp : Application() {
+    companion object {
+        private const val TAG = "LoggerApp"
+    }
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        // Enable MultiDex
+        MultiDex.install(this)
+    }
+
     override fun onCreate() {
         super.onCreate()
-        // You can initialize Firebase, DB, etc. here if needed
 
-        LocationWorkerScheduler.schedule(applicationContext)
+        // Initialize device ID
+        try {
+            val deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
+            Log.d(TAG, "Device ID initialized: $deviceId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing device ID", e)
+        }
 
+        // Initialize WorkManager using our utility class
+        WorkManagerInitializer.initialize(applicationContext)
+
+        // Workers will be scheduled after permissions are granted in MainActivity
     }
 }
