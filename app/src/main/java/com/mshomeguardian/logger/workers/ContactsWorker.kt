@@ -33,7 +33,7 @@ class ContactsWorker(
 
     companion object {
         private const val TAG = "ContactsWorker"
-        private const val MAX_CONTACTS_TO_SYNC = 100 // Reduced sync limit to avoid too many database operations
+        private const val SYNC_LIMIT = 50 // Reduced to avoid excessive processing
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -52,19 +52,16 @@ class ContactsWorker(
             val lastSyncTime = prefs.getLong("last_sync_time", 0)
             val currentTime = System.currentTimeMillis()
 
-            // Only sync if we haven't synced in the last 24 hours
-            if (lastSyncTime > 0 && (currentTime - lastSyncTime) < 24 * 60 * 60 * 1000) {
-                // It's been less than 24 hours since our last sync, skip full sync and just check for changes
-                val syncCount = syncChangedContactsOnly(lastSyncTime, currentTime)
-                Log.d(TAG, "Incremental contact sync completed. Synced $syncCount contacts.")
-            } else {
-                // First time sync or it's been more than 24 hours, do a more complete sync
-                val syncCount = syncContacts(lastSyncTime, currentTime)
-                Log.d(TAG, "Full contact sync completed. Synced $syncCount contacts.")
-            }
+            // Get previously synced contact IDs
+            val syncedContactIds = loadSyncedContactIds()
+
+            // Sync contacts
+            val syncCount = syncContacts(lastSyncTime, currentTime, syncedContactIds)
 
             // Update last sync time if successful
             prefs.edit().putLong("last_sync_time", currentTime).apply()
+
+            Log.d(TAG, "Incremental contact sync completed. Synced $syncCount contacts.")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing contacts", e)
@@ -72,120 +69,63 @@ class ContactsWorker(
         }
     }
 
-    private suspend fun syncChangedContactsOnly(lastSyncTime: Long, currentTime: Long): Int {
+    private fun loadSyncedContactIds(): Set<String> {
+        val prefs = applicationContext.getSharedPreferences("synced_contacts", Context.MODE_PRIVATE)
+        return prefs.getStringSet("contact_ids", HashSet()) ?: HashSet()
+    }
+
+    private fun saveSyncedContactId(contactId: String) {
+        val prefs = applicationContext.getSharedPreferences("synced_contacts", Context.MODE_PRIVATE)
+        val contactIds = prefs.getStringSet("contact_ids", HashSet()) ?: HashSet()
+        val newContactIds = HashSet(contactIds)
+        newContactIds.add(contactId)
+        prefs.edit().putStringSet("contact_ids", newContactIds).apply()
+    }
+
+    private suspend fun syncContacts(lastSyncTime: Long, currentTime: Long, syncedContactIds: Set<String>): Int {
         var syncCount = 0
         var cursor: Cursor? = null
 
         try {
-            // Try to get last modified contacts - this won't work on all Android versions
-            // but we'll try it first as an optimization
+            // Query for contacts
             val uri = ContactsContract.Contacts.CONTENT_URI
             val projection = arrayOf(
                 ContactsContract.Contacts._ID,
                 ContactsContract.Contacts.DISPLAY_NAME,
                 ContactsContract.Contacts.HAS_PHONE_NUMBER,
                 ContactsContract.Contacts.PHOTO_URI,
-                ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP // Not available on all versions
+                ContactsContract.Contacts.LAST_TIME_CONTACTED,
+                ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP // This may not be available on all Android versions
             )
 
-            // Try to filter by last updated timestamp
-            val selection = "${ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP} > ?"
-            val selectionArgs = arrayOf(lastSyncTime.toString())
+            // Try to use the CONTACT_LAST_UPDATED_TIMESTAMP column to get only updated contacts
+            var selection: String? = null
+            var selectionArgs: Array<String>? = null
 
-            try {
-                cursor = applicationContext.contentResolver.query(
-                    uri, projection, selection, selectionArgs, null
-                )
+            // First, try to query based on last updated timestamp if available
+            if (lastSyncTime > 0) {
+                try {
+                    selection = "${ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP} > ?"
+                    selectionArgs = arrayOf(lastSyncTime.toString())
 
-                if (cursor == null || cursor.count == 0) {
-                    // If this approach doesn't work (older Android versions or no updates),
-                    // fall back to a small random sample to keep things fresh
-                    cursor?.close()
-                    cursor = applicationContext.contentResolver.query(
+                    // Test if the column exists by running a query
+                    applicationContext.contentResolver.query(
                         uri,
-                        projection,
-                        null,
-                        null,
-                        "RANDOM() LIMIT $MAX_CONTACTS_TO_SYNC"
-                    )
-                }
-            } catch (e: Exception) {
-                // CONTACT_LAST_UPDATED_TIMESTAMP might not be available
-                Log.d(TAG, "Could not query by update timestamp, using random sample instead")
-                cursor?.close()
-                cursor = applicationContext.contentResolver.query(
-                    uri,
-                    projection,
-                    null,
-                    null,
-                    "RANDOM() LIMIT $MAX_CONTACTS_TO_SYNC"
-                )
-            }
-
-            cursor?.let {
-                val idIndex = it.getColumnIndex(ContactsContract.Contacts._ID)
-                val nameIndex = it.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
-                val hasPhoneIndex = it.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER)
-                val photoUriIndex = it.getColumnIndex(ContactsContract.Contacts.PHOTO_URI)
-
-                while (it.moveToNext() && syncCount < MAX_CONTACTS_TO_SYNC) {
-                    if (idIndex < 0) continue  // Skip if we can't get ID
-
-                    val contactId = it.getString(idIndex)
-                    val contactName = if (nameIndex >= 0 && !it.isNull(nameIndex)) it.getString(nameIndex) else "Unknown"
-                    val hasPhone = if (hasPhoneIndex >= 0) it.getInt(hasPhoneIndex) == 1 else false
-                    val photoUri = if (photoUriIndex >= 0 && !it.isNull(photoUriIndex)) it.getString(photoUriIndex) else null
-
-                    // Get phone numbers and emails only if needed
-                    val phoneNumbers = if (hasPhone) getPhoneNumbers(contactId) else emptyList()
-                    val emails = getEmails(contactId)
-
-                    // Create contact map for Firestore
-                    val contactMap = HashMap<String, Any>()
-                    contactMap["contactId"] = contactId
-                    contactMap["displayName"] = contactName
-                    contactMap["phoneNumbers"] = phoneNumbers
-                    contactMap["emails"] = emails
-                    contactMap["photoUri"] = photoUri ?: ""
-                    contactMap["syncTimestamp"] = currentTime
-                    contactMap["deviceId"] = deviceId
-
-                    // Upload to Firestore
-                    try {
-                        uploadContact(contactId, contactMap)
-                        syncCount++
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error uploading contact $contactId: ${e.message}")
-                    }
+                        arrayOf(ContactsContract.Contacts._ID),
+                        selection,
+                        selectionArgs,
+                        null
+                    )?.close()
+                } catch (e: Exception) {
+                    Log.d(TAG, "CONTACT_LAST_UPDATED_TIMESTAMP not available, falling back to ID-based sync")
+                    // Reset selection if the column doesn't exist
+                    selection = null
+                    selectionArgs = null
                 }
             }
 
-            return syncCount
-        } catch (e: Exception) {
-            Log.e(TAG, "Error querying contacts for incremental sync", e)
-            throw e
-        } finally {
-            cursor?.close()
-        }
-    }
-
-    private suspend fun syncContacts(lastSyncTime: Long, currentTime: Long): Int {
-        var syncCount = 0
-        var cursor: Cursor? = null
-
-        try {
-            // For full sync, just get a limited number of contacts
-            val uri = ContactsContract.Contacts.CONTENT_URI
-            val projection = arrayOf(
-                ContactsContract.Contacts._ID,
-                ContactsContract.Contacts.DISPLAY_NAME,
-                ContactsContract.Contacts.HAS_PHONE_NUMBER,
-                ContactsContract.Contacts.PHOTO_URI
-            )
-
-            // No filtering, but limit the number
             cursor = applicationContext.contentResolver.query(
-                uri, projection, null, null, "RANDOM() LIMIT $MAX_CONTACTS_TO_SYNC"
+                uri, projection, selection, selectionArgs, null
             )
 
             cursor?.let {
@@ -193,17 +133,27 @@ class ContactsWorker(
                 val nameIndex = it.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
                 val hasPhoneIndex = it.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER)
                 val photoUriIndex = it.getColumnIndex(ContactsContract.Contacts.PHOTO_URI)
+                val lastContactedIndex = it.getColumnIndex(ContactsContract.Contacts.LAST_TIME_CONTACTED)
 
-                while (it.moveToNext() && syncCount < MAX_CONTACTS_TO_SYNC) {
-                    if (idIndex < 0) continue  // Skip if we can't get ID
+                while (it.moveToNext() && syncCount < SYNC_LIMIT) {
+                    if (idIndex < 0) continue
 
                     val contactId = it.getString(idIndex)
+
+                    // Skip contacts we've already synced
+                    if (selection == null && syncedContactIds.contains(contactId)) {
+                        continue // Skip already synced contacts
+                    }
+
                     val contactName = if (nameIndex >= 0 && !it.isNull(nameIndex)) it.getString(nameIndex) else "Unknown"
                     val hasPhone = if (hasPhoneIndex >= 0) it.getInt(hasPhoneIndex) == 1 else false
                     val photoUri = if (photoUriIndex >= 0 && !it.isNull(photoUriIndex)) it.getString(photoUriIndex) else null
+                    val lastContacted = if (lastContactedIndex >= 0 && !it.isNull(lastContactedIndex)) it.getLong(lastContactedIndex) else 0L
 
-                    // Get phone numbers and emails
+                    // Get phone numbers for this contact
                     val phoneNumbers = if (hasPhone) getPhoneNumbers(contactId) else emptyList()
+
+                    // Get emails for this contact
                     val emails = getEmails(contactId)
 
                     // Create contact map for Firestore
@@ -213,12 +163,15 @@ class ContactsWorker(
                     contactMap["phoneNumbers"] = phoneNumbers
                     contactMap["emails"] = emails
                     contactMap["photoUri"] = photoUri ?: ""
+                    contactMap["lastContactedTimestamp"] = lastContacted
                     contactMap["syncTimestamp"] = currentTime
                     contactMap["deviceId"] = deviceId
 
-                    // Upload to Firestore
+                    // Upload to Firestore - but only insert, no updates (to prevent deleting contacts)
                     try {
                         uploadContact(contactId, contactMap)
+                        // Mark this contact as synced
+                        saveSyncedContactId(contactId)
                         syncCount++
                     } catch (e: Exception) {
                         Log.e(TAG, "Error uploading contact $contactId: ${e.message}")
@@ -234,7 +187,6 @@ class ContactsWorker(
             cursor?.close()
         }
     }
-
     private fun getPhoneNumbers(contactId: String): List<Map<String, String>> {
         val phoneList = mutableListOf<Map<String, String>>()
         var phoneCursor: Cursor? = null

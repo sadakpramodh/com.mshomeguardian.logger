@@ -5,7 +5,6 @@ import android.content.Context
 import android.util.Log
 import androidx.multidex.MultiDex
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.WorkManagerInitializer
 

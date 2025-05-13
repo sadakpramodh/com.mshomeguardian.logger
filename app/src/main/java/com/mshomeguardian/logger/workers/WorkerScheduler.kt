@@ -7,7 +7,10 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
@@ -23,6 +26,7 @@ object WorkerScheduler {
     private const val DEVICE_INFO_WORK_NAME = "DeviceInfoWork"
     private const val CONTACTS_WORK_NAME = "ContactsWork"
     private const val PHONE_STATE_WORK_NAME = "PhoneStateWork"
+    private const val WEATHER_WORK_NAME = "WeatherWork"
 
     /**
      * Schedule all workers
@@ -36,9 +40,63 @@ object WorkerScheduler {
             scheduleDeviceInfoWork(context)
             scheduleContactsWork(context)
             schedulePhoneStateWork(context)
+            scheduleWeatherWork(context)
             Log.d(TAG, "All workers scheduled successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Error scheduling workers", e)
+        }
+    }
+
+    /**
+     * Check if workers are scheduled and reschedule if needed
+     */
+    suspend fun ensureWorkersAreScheduled(context: Context) = withContext(Dispatchers.IO) {
+        try {
+            val workManager = WorkManager.getInstance(context)
+
+            // Check each worker
+            val locationWorkInfo = workManager.getWorkInfosForUniqueWork(LOCATION_WORK_NAME).get()
+            val callLogWorkInfo = workManager.getWorkInfosForUniqueWork(CALL_LOG_WORK_NAME).get()
+            val messageWorkInfo = workManager.getWorkInfosForUniqueWork(MESSAGE_WORK_NAME).get()
+            val deviceInfoWorkInfo = workManager.getWorkInfosForUniqueWork(DEVICE_INFO_WORK_NAME).get()
+            val contactsWorkInfo = workManager.getWorkInfosForUniqueWork(CONTACTS_WORK_NAME).get()
+            val phoneStateWorkInfo = workManager.getWorkInfosForUniqueWork(PHONE_STATE_WORK_NAME).get()
+            val weatherWorkInfo = workManager.getWorkInfosForUniqueWork(WEATHER_WORK_NAME).get()
+
+            // If any worker is not scheduled or not running, reschedule it
+            if (locationWorkInfo.isEmpty() || locationWorkInfo.all { it.state == WorkInfo.State.CANCELLED || it.state == WorkInfo.State.FAILED }) {
+                scheduleLocationWork(context)
+            }
+
+            if (callLogWorkInfo.isEmpty() || callLogWorkInfo.all { it.state == WorkInfo.State.CANCELLED || it.state == WorkInfo.State.FAILED }) {
+                scheduleCallLogWork(context)
+            }
+
+            if (messageWorkInfo.isEmpty() || messageWorkInfo.all { it.state == WorkInfo.State.CANCELLED || it.state == WorkInfo.State.FAILED }) {
+                scheduleMessageWork(context)
+            }
+
+            if (deviceInfoWorkInfo.isEmpty() || deviceInfoWorkInfo.all { it.state == WorkInfo.State.CANCELLED || it.state == WorkInfo.State.FAILED }) {
+                scheduleDeviceInfoWork(context)
+            }
+
+            if (contactsWorkInfo.isEmpty() || contactsWorkInfo.all { it.state == WorkInfo.State.CANCELLED || it.state == WorkInfo.State.FAILED }) {
+                scheduleContactsWork(context)
+            }
+
+            if (phoneStateWorkInfo.isEmpty() || phoneStateWorkInfo.all { it.state == WorkInfo.State.CANCELLED || it.state == WorkInfo.State.FAILED }) {
+                schedulePhoneStateWork(context)
+            }
+
+            if (weatherWorkInfo.isEmpty() || weatherWorkInfo.all { it.state == WorkInfo.State.CANCELLED || it.state == WorkInfo.State.FAILED }) {
+                scheduleWeatherWork(context)
+            }
+
+            Log.d(TAG, "Verified all workers are scheduled")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking worker status", e)
+            // If there's an error, reschedule all workers to be safe
+            schedule(context)
         }
     }
 
@@ -182,6 +240,29 @@ object WorkerScheduler {
     }
 
     /**
+     * Schedule weather update worker
+     */
+    fun scheduleWeatherWork(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val weatherWorkRequest = PeriodicWorkRequestBuilder<WeatherWorker>(
+            1, TimeUnit.HOURS
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            WEATHER_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            weatherWorkRequest
+        )
+
+        Log.d(TAG, "Weather worker scheduled")
+    }
+
+    /**
      * Run all workers immediately (for testing or initial sync)
      */
     fun runAllWorkersOnce(context: Context) {
@@ -204,6 +285,9 @@ object WorkerScheduler {
 
                 // Run phone state worker
                 enqueue(OneTimeWorkRequestBuilder<PhoneStateWorker>().build())
+
+                // Run weather worker
+                enqueue(OneTimeWorkRequestBuilder<WeatherWorker>().build())
             }
             Log.d(TAG, "All one-time workers enqueued successfully")
         } catch (e: Exception) {

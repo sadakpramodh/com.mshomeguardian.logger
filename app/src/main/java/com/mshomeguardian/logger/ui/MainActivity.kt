@@ -1,13 +1,21 @@
 package com.mshomeguardian.logger.ui
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
+import android.view.View
 import android.widget.Button
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -15,8 +23,21 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.mshomeguardian.logger.R
+import com.mshomeguardian.logger.services.MonitoringService
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.LocationUtils
+import com.mshomeguardian.logger.utils.WeatherUtil  // Add this import
 import com.mshomeguardian.logger.workers.WorkerScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+import androidx.cardview.widget.CardView
+
 
 class MainActivity : AppCompatActivity() {
     private val LOCATION_PERMISSION_REQUEST_CODE = 101
@@ -29,6 +50,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceIdText: TextView
     private lateinit var syncButton: Button
 
+    // New UI elements
+    private lateinit var weatherCard: androidx.cardview.widget.CardView
+    private lateinit var weatherIcon: ImageView
+    private lateinit var temperatureText: TextView
+    private lateinit var weatherDescText: TextView
+    private lateinit var locationText: TextView
+    private lateinit var lastSyncText: TextView
+    private lateinit var lastLocationText: TextView
+    private lateinit var lastCallLogText: TextView
+    private lateinit var lastMessageText: TextView
+    private lateinit var lastContactsText: TextView
+
     // All required permissions
     private val requiredPermissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -37,7 +70,6 @@ class MainActivity : AppCompatActivity() {
         Manifest.permission.READ_PHONE_STATE,
         Manifest.permission.READ_CONTACTS
     )
-
 
     // Additional background location permission for Android 10+
     private val backgroundLocationPermission =
@@ -49,10 +81,26 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Initialize UI elements
         statusText = findViewById(R.id.statusText)
         permissionsButton = findViewById(R.id.permissionsButton)
         deviceIdText = findViewById(R.id.deviceIdText)
         syncButton = findViewById(R.id.syncButton)
+
+        // Initialize new UI elements
+        weatherCard = findViewById(R.id.weatherCard)
+        weatherIcon = findViewById(R.id.weatherIcon)
+        temperatureText = findViewById(R.id.temperatureText)
+        weatherDescText = findViewById(R.id.weatherDescText)
+        locationText = findViewById(R.id.locationText)
+        lastSyncText = findViewById(R.id.lastSyncText)
+        lastLocationText = findViewById(R.id.lastLocationText)
+        lastCallLogText = findViewById(R.id.lastCallLogText)
+        lastMessageText = findViewById(R.id.lastMessageText)
+        lastContactsText = findViewById(R.id.lastContactsText)
+
+        // Create notification channel for foreground service
+        createNotificationChannel()
 
         // Set device ID
         val deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
@@ -68,6 +116,7 @@ class MainActivity : AppCompatActivity() {
             if (areAllPermissionsGranted()) {
                 Toast.makeText(this, "Starting manual sync...", Toast.LENGTH_SHORT).show()
                 WorkerScheduler.runAllWorkersOnce(applicationContext)
+                updateLastSyncTimes()
             } else {
                 Toast.makeText(this, "Please grant all permissions first", Toast.LENGTH_LONG).show()
                 updatePermissionStatus()
@@ -76,6 +125,109 @@ class MainActivity : AppCompatActivity() {
 
         // Check permissions on startup
         updatePermissionStatus()
+
+        // Load last sync times
+        updateLastSyncTimes()
+
+        // Load weather data if permissions are granted
+        if (ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED) {
+            loadWeatherData()
+        }
+
+        // Start monitoring service if permissions granted
+        if (areAllPermissionsGranted()) {
+            startBackgroundServices()
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Home Guardian Monitoring"
+            val descriptionText = "Notification channel for Home Guardian monitoring service"
+            val importance = NotificationManager.IMPORTANCE_LOW
+            val channel = NotificationChannel("monitoring_service", name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun updateLastSyncTimes() {
+        // Get last sync time from shared preferences
+        val locationPrefs = getSharedPreferences("location_sync", MODE_PRIVATE)
+        val callLogPrefs = getSharedPreferences("call_log_sync", MODE_PRIVATE)
+        val messagePrefs = getSharedPreferences("message_sync", MODE_PRIVATE)
+        val contactsPrefs = getSharedPreferences("contacts_sync", MODE_PRIVATE)
+
+        val locationTime = locationPrefs.getLong("last_sync_time", 0)
+        val callLogTime = callLogPrefs.getLong("last_sync_time", 0)
+        val messageTime = messagePrefs.getLong("last_sync_time", 0)
+        val contactsTime = contactsPrefs.getLong("last_sync_time", 0)
+
+        // Format dates
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+
+        lastLocationText.text = "Location: " + if (locationTime > 0) dateFormat.format(Date(locationTime)) else "Never"
+        lastCallLogText.text = "Call Logs: " + if (callLogTime > 0) dateFormat.format(Date(callLogTime)) else "Never"
+        lastMessageText.text = "Messages: " + if (messageTime > 0) dateFormat.format(Date(messageTime)) else "Never"
+        lastContactsText.text = "Contacts: " + if (contactsTime > 0) dateFormat.format(Date(contactsTime)) else "Never"
+
+        // Update overall last sync time
+        val lastSync = maxOf(locationTime, callLogTime, messageTime, contactsTime)
+        if (lastSync > 0) {
+            lastSyncText.text = "Last Sync: " + dateFormat.format(Date(lastSync))
+        } else {
+            lastSyncText.text = "Last Sync: Never"
+        }
+    }
+
+    private fun loadWeatherData() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val location = LocationUtils.getLastKnownLocation(applicationContext)
+                if (location != null) {
+                    val weatherData = WeatherUtil.getWeatherData(
+                        location.latitude,
+                        location.longitude
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        updateWeatherUI(weatherData, location)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        weatherDescText.text = "Location unavailable"
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    weatherDescText.text = "Weather unavailable"
+                }
+            }
+        }
+    }
+
+    private fun updateWeatherUI(weatherData: WeatherUtil.WeatherData, location: Location) {
+        temperatureText.text = "${weatherData.temperature}°C"
+        weatherDescText.text = weatherData.description
+        locationText.text = "Lat: ${String.format("%.4f", location.latitude)}, Lng: ${String.format("%.4f", location.longitude)}"
+
+        // Set weather icon based on condition
+        val weatherIconRes = when {
+            weatherData.description.contains("rain", ignoreCase = true) -> R.drawable.ic_weather_rain
+            weatherData.description.contains("cloud", ignoreCase = true) -> R.drawable.ic_weather_cloudy
+            weatherData.description.contains("clear", ignoreCase = true) -> R.drawable.ic_weather_sunny
+            weatherData.description.contains("snow", ignoreCase = true) -> R.drawable.ic_weather_snow
+            weatherData.description.contains("thunder", ignoreCase = true) -> R.drawable.ic_weather_thunder
+            weatherData.description.contains("fog", ignoreCase = true) -> R.drawable.ic_weather_foggy
+            else -> R.drawable.ic_weather_default
+        }
+
+        weatherIcon.setImageResource(weatherIconRes)
+        weatherCard.visibility = View.VISIBLE
     }
 
     private fun requestAllPermissions() {
@@ -259,6 +411,9 @@ class MainActivity : AppCompatActivity() {
             status.append("All permissions granted.\nService is running in the background.")
             permissionsButton.text = "Permissions: All Granted"
             syncButton.isEnabled = true
+
+            // Load weather data if we have location permission
+            loadWeatherData()
         } else {
             status.append("Some permissions are missing.\nPlease grant all permissions for full functionality.")
             permissionsButton.text = "Grant Permissions"
@@ -274,9 +429,22 @@ class MainActivity : AppCompatActivity() {
             // Start all workers
             WorkerScheduler.runAllWorkersOnce(applicationContext)
 
+            // Schedule periodic workers
+            WorkerScheduler.schedule(applicationContext)
+
+            // Start foreground service
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(Intent(this, MonitoringService::class.java))
+            } else {
+                startService(Intent(this, MonitoringService::class.java))
+            }
+
             // Update UI
             updatePermissionStatus()
             Toast.makeText(this, "Home Guardian is now monitoring your device", Toast.LENGTH_SHORT).show()
+
+            // Update last sync times
+            updateLastSyncTimes()
         } else {
             updatePermissionStatus()
         }
@@ -287,5 +455,34 @@ class MainActivity : AppCompatActivity() {
         // Update permission status each time activity is resumed
         // This handles the case where user grants permissions from Settings
         updatePermissionStatus()
+
+        // Update last sync times
+        updateLastSyncTimes()
+
+        // Refresh weather data
+        if (ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED) {
+            loadWeatherData()
+        }
+
+        // Request to ignore battery optimizations
+        requestIgnoreBatteryOptimizations()
+    }
+
+    private fun requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Failed to request ignoring battery optimizations", e)
+                }
+            }
+        }
     }
 }

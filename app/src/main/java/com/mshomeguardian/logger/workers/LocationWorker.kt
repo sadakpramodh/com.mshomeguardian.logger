@@ -41,19 +41,24 @@ class LocationWorker(
             val loc: Location? = LocationUtils.getLastKnownLocation(applicationContext)
 
             if (loc != null) {
+                // Reset failure counter on success
                 consecutiveLocationFailures = 0
+
                 val ts = System.currentTimeMillis()
                 val entity = LocationEntity(ts, loc.latitude, loc.longitude)
 
                 Log.d(TAG, "New location captured: lat=${loc.latitude}, lng=${loc.longitude}")
 
+                // Save to local Room database first
                 try {
                     db.locationDao().insertLocation(entity)
                     Log.d(TAG, "Location saved to local database")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to save location to local database", e)
+                    // Continue even if local save fails
                 }
 
+                // Try to upload to Firestore if available
                 val firestoreInstance = firestore
                 if (firestoreInstance != null) {
                     try {
@@ -64,6 +69,11 @@ class LocationWorker(
                             .set(entity, SetOptions.merge())
                             .addOnSuccessListener {
                                 Log.d(TAG, "Location uploaded to Firestore")
+
+                                // Save last sync time to SharedPreferences
+                                val prefs = applicationContext.getSharedPreferences(
+                                    "location_sync", Context.MODE_PRIVATE)
+                                prefs.edit().putLong("last_sync_time", ts).apply()
                             }
                             .addOnFailureListener { e ->
                                 Log.e(TAG, "Firestore upload failed", e)
@@ -77,16 +87,21 @@ class LocationWorker(
 
                 Result.success()
             } else {
+                // Increment failure counter
                 consecutiveLocationFailures++
+
                 Log.e(TAG, "Location == null, attempt $consecutiveLocationFailures of $MAX_RETRIES")
 
                 if (consecutiveLocationFailures >= MAX_RETRIES) {
+                    // After multiple failures, succeed anyway to prevent endless retries
                     Log.w(TAG, "Giving up after $MAX_RETRIES location failures")
                     consecutiveLocationFailures = 0
                     Result.success()
                 } else {
+                    // Exponential backoff for retries (15s, 30s, 60s)
                     val backoffDelaySeconds = (15 * Math.pow(2.0, (consecutiveLocationFailures - 1).toDouble())).toLong()
                     Log.d(TAG, "Will retry in $backoffDelaySeconds seconds")
+
                     Result.retry()
                 }
             }
