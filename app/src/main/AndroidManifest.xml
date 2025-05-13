@@ -20,6 +20,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Contacts Permission -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Phone State Permission -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <application
         android:name=".LoggerApp"
         android:allowBackup="true"

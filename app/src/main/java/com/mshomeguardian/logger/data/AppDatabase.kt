@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
         MessageEntity::class,
         DeviceInfoEntity::class
     ],
-    version = 1,
+    version = 2,  // Increased from 1 to 2
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

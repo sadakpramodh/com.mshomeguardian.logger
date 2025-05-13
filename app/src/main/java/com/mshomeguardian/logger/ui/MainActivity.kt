@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
         Manifest.permission.READ_CONTACTS
     )
 
+
     // Additional background location permission for Android 10+
     private val backgroundLocationPermission =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

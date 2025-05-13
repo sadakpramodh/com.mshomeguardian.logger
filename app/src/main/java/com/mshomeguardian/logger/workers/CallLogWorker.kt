@@ -4,9 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
-import android.net.Uri
 import android.provider.CallLog
-import android.provider.ContactsContract
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
@@ -17,8 +15,7 @@ import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.CallLogEntity
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.*
 
@@ -39,7 +36,7 @@ class CallLogWorker(
 
     companion object {
         private const val TAG = "CallLogWorker"
-        private const val SYNC_LIMIT = 500 // Limit number of call logs to sync at once
+        private const val SYNC_LIMIT = 50 // Reduced to avoid excessive processing
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -62,12 +59,12 @@ class CallLogWorker(
             val syncCount = syncCallLogs(lastSyncTime, currentTime)
 
             // Upload new records to Firestore
-            uploadNewRecords()
+            val uploadCount = uploadNewRecords()
 
             // Update last sync time if successful
             prefs.edit().putLong("last_sync_time", currentTime).apply()
 
-            Log.d(TAG, "Call log sync completed. Synced $syncCount records.")
+            Log.d(TAG, "Call log sync completed. Synced $syncCount records. Uploaded $uploadCount records.")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing call logs", e)
@@ -90,8 +87,6 @@ class CallLogWorker(
                 CallLog.Calls.TYPE,
                 CallLog.Calls.NEW,
                 CallLog.Calls.CACHED_NAME,
-                CallLog.Calls.CACHED_NUMBER_TYPE,
-                CallLog.Calls.CACHED_NUMBER_LABEL,
                 CallLog.Calls.CACHED_PHOTO_URI,
                 CallLog.Calls.IS_READ
             )
@@ -99,12 +94,22 @@ class CallLogWorker(
             // Selection for calls after the last sync time
             val selection = "${CallLog.Calls.DATE} > ?"
             val selectionArgs = arrayOf(lastSyncTime.toString())
-            val sortOrder = "${CallLog.Calls.DATE} DESC LIMIT $SYNC_LIMIT"
+            // Remove LIMIT from sortOrder and use a different approach
+            val sortOrder = "${CallLog.Calls.DATE} DESC"
 
-            cursor = applicationContext.contentResolver.query(
-                uri, projection, selection, selectionArgs, sortOrder
-            )
+            try {
+                cursor = applicationContext.contentResolver.query(
+                    uri, projection, selection, selectionArgs, sortOrder
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in initial query, trying without selection", e)
+                // If that fails, try a simpler query
+                cursor = applicationContext.contentResolver.query(
+                    uri, projection, null, null, sortOrder
+                )
+            }
 
+            var count = 0
             cursor?.let {
                 val idIndex = it.getColumnIndex(CallLog.Calls._ID)
                 val numberIndex = it.getColumnIndex(CallLog.Calls.NUMBER)
@@ -116,15 +121,15 @@ class CallLogWorker(
                 val photoUriIndex = it.getColumnIndex(CallLog.Calls.CACHED_PHOTO_URI)
                 val isReadIndex = it.getColumnIndex(CallLog.Calls.IS_READ)
 
-                while (it.moveToNext()) {
+                while (it.moveToNext() && count < SYNC_LIMIT) {
                     val callId = if (idIndex >= 0) it.getString(idIndex) else UUID.randomUUID().toString()
-                    val number = if (numberIndex >= 0) it.getString(numberIndex) ?: "" else ""
+                    val number = if (numberIndex >= 0 && !it.isNull(numberIndex)) it.getString(numberIndex) ?: "" else ""
                     val date = if (dateIndex >= 0) it.getLong(dateIndex) else currentTime
                     val duration = if (durationIndex >= 0) it.getLong(durationIndex) else 0
                     val type = if (typeIndex >= 0) it.getInt(typeIndex) else CallLog.Calls.MISSED_TYPE
                     val isNew = if (newIndex >= 0) it.getInt(newIndex) == 1 else false
-                    val name = if (nameIndex >= 0) it.getString(nameIndex) else null
-                    val photoUri = if (photoUriIndex >= 0) it.getString(photoUriIndex) else null
+                    val name = if (nameIndex >= 0 && !it.isNull(nameIndex)) it.getString(nameIndex) else null
+                    val photoUri = if (photoUriIndex >= 0 && !it.isNull(photoUriIndex)) it.getString(photoUriIndex) else null
                     val isRead = if (isReadIndex >= 0) it.getInt(isReadIndex) == 1 else false
 
                     // Create call log entity
@@ -144,31 +149,25 @@ class CallLogWorker(
                         deviceId = deviceId
                     )
 
-                    // Check if call log already exists
-                    val existingCallLog = db.callLogDao().getCallLogByCallId(callId)
-                    if (existingCallLog == null) {
-                        callLogs.add(callLogEntity)
-                    } else {
-                        // Update only if something changed
-                        if (existingCallLog.isRead != isRead ||
-                            existingCallLog.duration != duration ||
-                            existingCallLog.contactName != name) {
-
-                            // Keep existing flags
-                            db.callLogDao().updateCallLog(callLogEntity.copy(
-                                id = existingCallLog.id,
-                                uploadedToCloud = existingCallLog.uploadedToCloud,
-                                uploadTimestamp = existingCallLog.uploadTimestamp
-                            ))
-                        }
-                    }
+                    // For call logs, we'll directly add them to the list instead of checking DB first
+                    // This reduces database operations and is more efficient
+                    callLogs.add(callLogEntity)
+                    count++
                 }
             }
 
-            // Insert all new call logs
+            // Insert all new call logs in bulk
             if (callLogs.isNotEmpty()) {
-                db.callLogDao().insertCallLogs(callLogs)
-                Log.d(TAG, "Inserted ${callLogs.size} new call logs")
+                try {
+                    db.callLogDao().insertCallLogs(callLogs)
+                    Log.d(TAG, "Inserted ${callLogs.size} new call logs")
+                } catch (e: Exception) {
+                    // If Room database is having issues, we'll upload directly to Firestore
+                    Log.e(TAG, "Error inserting to database, will upload directly to Firestore", e)
+                    for (callLog in callLogs) {
+                        uploadCallLogDirectly(callLog)
+                    }
+                }
             }
 
             return callLogs.size
@@ -180,40 +179,100 @@ class CallLogWorker(
         }
     }
 
-    private suspend fun uploadNewRecords() {
+    private suspend fun uploadCallLogDirectly(callLog: CallLogEntity) {
         val firestoreInstance = firestore ?: return
 
         try {
+            // Convert CallLogEntity to a Map for Firestore
+            val callLogMap = HashMap<String, Any?>()
+            callLogMap["callId"] = callLog.callId
+            callLogMap["syncTimestamp"] = callLog.syncTimestamp
+            callLogMap["phoneNumber"] = callLog.phoneNumber
+            callLogMap["timestamp"] = callLog.timestamp
+            callLogMap["duration"] = callLog.duration
+            callLogMap["type"] = callLog.type
+            callLogMap["contactName"] = callLog.contactName ?: ""
+            callLogMap["contactPhotoUri"] = callLog.contactPhotoUri ?: ""
+            callLogMap["isRead"] = callLog.isRead
+            callLogMap["isNew"] = callLog.isNew
+            callLogMap["deletedLocally"] = callLog.deletedLocally
+            callLogMap["deviceId"] = callLog.deviceId
+
+            // Upload to Firestore
+            firestoreInstance.collection("devices")
+                .document(deviceId)
+                .collection("call_logs")
+                .document(callLog.callId)
+                .set(callLogMap, SetOptions.merge())
+                .await()
+
+            Log.d(TAG, "Call log ${callLog.callId} uploaded directly to Firestore")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error uploading call log directly ${callLog.callId}: ${e.message}")
+        }
+    }
+
+    private suspend fun uploadNewRecords(): Int {
+        val firestoreInstance = firestore ?: return 0
+        var uploadCount = 0
+
+        try {
             // Get call logs that haven't been uploaded
-            val notUploadedCallLogs = db.callLogDao().getNotUploadedCallLogs()
+            val notUploadedCallLogs = try {
+                db.callLogDao().getNotUploadedCallLogs()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting not uploaded call logs", e)
+                emptyList()
+            }
+
             Log.d(TAG, "Found ${notUploadedCallLogs.size} call logs to upload")
 
             for (callLog in notUploadedCallLogs) {
                 try {
+                    // Convert CallLogEntity to a Map for Firestore
+                    val callLogMap = HashMap<String, Any?>()
+                    callLogMap["callId"] = callLog.callId
+                    callLogMap["syncTimestamp"] = callLog.syncTimestamp
+                    callLogMap["phoneNumber"] = callLog.phoneNumber
+                    callLogMap["timestamp"] = callLog.timestamp
+                    callLogMap["duration"] = callLog.duration
+                    callLogMap["type"] = callLog.type
+                    callLogMap["contactName"] = callLog.contactName ?: ""
+                    callLogMap["contactPhotoUri"] = callLog.contactPhotoUri ?: ""
+                    callLogMap["isRead"] = callLog.isRead
+                    callLogMap["isNew"] = callLog.isNew
+                    callLogMap["deletedLocally"] = callLog.deletedLocally
+                    callLogMap["deviceId"] = callLog.deviceId
+
                     // Upload to Firestore
                     firestoreInstance.collection("devices")
                         .document(deviceId)
                         .collection("call_logs")
                         .document(callLog.callId)
-                        .set(callLog, SetOptions.merge())
-                        .addOnSuccessListener {
-                            // Mark as uploaded in a separate coroutine to avoid blocking
-                            GlobalScope.launch(Dispatchers.IO) {
-                                val uploadTime = System.currentTimeMillis()
-                                db.callLogDao().markCallLogAsUploaded(callLog.id, uploadTime)
-                                Log.d(TAG, "Call log ${callLog.callId} marked as uploaded")
-                            }
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e(TAG, "Failed to upload call log ${callLog.callId}", e)
-                        }
+                        .set(callLogMap, SetOptions.merge())
+                        .await()
+
+                    try {
+                        // Mark as uploaded
+                        val uploadTime = System.currentTimeMillis()
+                        db.callLogDao().markCallLogAsUploaded(callLog.id, uploadTime)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error marking call log as uploaded: ${e.message}")
+                    }
+
+                    uploadCount++
+                    Log.d(TAG, "Call log ${callLog.callId} uploaded successfully")
+
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error uploading call log ${callLog.callId}", e)
+                    Log.e(TAG, "Error uploading call log ${callLog.callId}: ${e.message}")
                     // Continue with next record
                 }
             }
+
+            return uploadCount
         } catch (e: Exception) {
             Log.e(TAG, "Error in uploadNewRecords", e)
+            return 0
         }
     }
 }

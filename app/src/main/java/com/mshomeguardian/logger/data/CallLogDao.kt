@@ -44,4 +44,6 @@ interface CallLogDao {
 
     @Query("SELECT COUNT(*) FROM call_logs WHERE timestamp >= :since")
     suspend fun getCallLogsCountSince(since: Long): Int
+
+
 }

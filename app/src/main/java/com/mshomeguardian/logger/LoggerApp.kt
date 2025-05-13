@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.multidex.MultiDex
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.WorkManagerInitializer
 
@@ -23,6 +25,16 @@ class LoggerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize Firebase properly to avoid SecurityException
+        try {
+            if (FirebaseApp.getApps(this).isEmpty()) {
+                FirebaseApp.initializeApp(this)
+                Log.d(TAG, "Firebase initialized successfully")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Firebase", e)
+        }
 
         // Initialize device ID
         try {
