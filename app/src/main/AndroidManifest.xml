@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    tools:node="merge">
+    package="com.mshomeguardian.logger">
 
     <!-- Location Permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -21,10 +20,27 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Battery optimization exemption -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Foreground Service Type Permissions (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- Audio Recording Permissions -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Storage Permissions -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <!-- Wake Lock Permission -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- Foreground Service Type Permissions (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <application
         android:name=".LoggerApp"
@@ -33,8 +49,7 @@
         android:label="Home Guardian"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
-        tools:replace="android:label">
+        android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
 
         <activity
             android:name=".ui.MainActivity"
@@ -45,6 +60,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Recording Service -->
+        <service
+            android:name=".services.AudioRecordingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Monitoring Service -->
         <service
             android:name=".services.MonitoringService"
             android:enabled="true"
@@ -60,17 +83,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Widget definition -->
-        <receiver
-            android:name=".widget.HomeGuardianWidgetProvider"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/home_guardian_widget_info" />
-        </receiver>
+        <!-- Remove ALL provider entries related to WorkManager -->
 
     </application>
 </manifest>

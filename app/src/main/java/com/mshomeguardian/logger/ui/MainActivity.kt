@@ -22,11 +22,13 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.cardview.widget.CardView
 import com.mshomeguardian.logger.R
+import com.mshomeguardian.logger.services.AudioRecordingService
 import com.mshomeguardian.logger.services.MonitoringService
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.LocationUtils
-import com.mshomeguardian.logger.utils.WeatherUtil  // Add this import
+import com.mshomeguardian.logger.utils.WeatherUtil
 import com.mshomeguardian.logger.workers.WorkerScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,22 +38,22 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import androidx.cardview.widget.CardView
-
 
 class MainActivity : AppCompatActivity() {
     private val LOCATION_PERMISSION_REQUEST_CODE = 101
     private val BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE = 102
     private val CALL_SMS_PERMISSION_REQUEST_CODE = 103
     private val ALL_PERMISSIONS_REQUEST_CODE = 104
+    private val AUDIO_PERMISSION_REQUEST_CODE = 105
 
     private lateinit var statusText: TextView
     private lateinit var permissionsButton: Button
     private lateinit var deviceIdText: TextView
     private lateinit var syncButton: Button
+    private lateinit var recordingToggleButton: Button
 
     // New UI elements
-    private lateinit var weatherCard: androidx.cardview.widget.CardView
+    private lateinit var weatherCard: CardView
     private lateinit var weatherIcon: ImageView
     private lateinit var temperatureText: TextView
     private lateinit var weatherDescText: TextView
@@ -61,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lastCallLogText: TextView
     private lateinit var lastMessageText: TextView
     private lateinit var lastContactsText: TextView
+    private lateinit var lastAudioRecordingText: TextView
 
     // All required permissions
     private val requiredPermissions = arrayOf(
@@ -68,7 +71,8 @@ class MainActivity : AppCompatActivity() {
         Manifest.permission.READ_CALL_LOG,
         Manifest.permission.READ_SMS,
         Manifest.permission.READ_PHONE_STATE,
-        Manifest.permission.READ_CONTACTS
+        Manifest.permission.READ_CONTACTS,
+        Manifest.permission.RECORD_AUDIO
     )
 
     // Additional background location permission for Android 10+
@@ -76,6 +80,9 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             Manifest.permission.ACCESS_BACKGROUND_LOCATION
         } else null
+
+    // Flag to track if recording service is running
+    private var isRecordingServiceRunning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,6 +93,7 @@ class MainActivity : AppCompatActivity() {
         permissionsButton = findViewById(R.id.permissionsButton)
         deviceIdText = findViewById(R.id.deviceIdText)
         syncButton = findViewById(R.id.syncButton)
+        recordingToggleButton = findViewById(R.id.recordingToggleButton)
 
         // Initialize new UI elements
         weatherCard = findViewById(R.id.weatherCard)
@@ -98,6 +106,7 @@ class MainActivity : AppCompatActivity() {
         lastCallLogText = findViewById(R.id.lastCallLogText)
         lastMessageText = findViewById(R.id.lastMessageText)
         lastContactsText = findViewById(R.id.lastContactsText)
+        lastAudioRecordingText = findViewById(R.id.lastAudioRecordingText)
 
         // Create notification channel for foreground service
         createNotificationChannel()
@@ -123,6 +132,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Set up recording toggle button
+        recordingToggleButton.setOnClickListener {
+            toggleRecordingService()
+        }
+
         // Check permissions on startup
         updatePermissionStatus()
 
@@ -144,14 +158,28 @@ class MainActivity : AppCompatActivity() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Home Guardian Monitoring"
-            val descriptionText = "Notification channel for Home Guardian monitoring service"
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel("monitoring_service", name, importance).apply {
-                description = descriptionText
+            // Monitoring service channel
+            val monitoringChannel = NotificationChannel(
+                "monitoring_service",
+                "Home Guardian Monitoring",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Notification channel for Home Guardian monitoring service"
             }
+
+            // Audio recording service channel
+            val recordingChannel = NotificationChannel(
+                "recording_service_channel",
+                "Audio Recording Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Used for the audio recording service notifications"
+                setShowBadge(false)
+            }
+
             val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(monitoringChannel)
+            notificationManager.createNotificationChannel(recordingChannel)
         }
     }
 
@@ -161,11 +189,13 @@ class MainActivity : AppCompatActivity() {
         val callLogPrefs = getSharedPreferences("call_log_sync", MODE_PRIVATE)
         val messagePrefs = getSharedPreferences("message_sync", MODE_PRIVATE)
         val contactsPrefs = getSharedPreferences("contacts_sync", MODE_PRIVATE)
+        val audioPrefs = getSharedPreferences("audio_recording_sync", MODE_PRIVATE)
 
         val locationTime = locationPrefs.getLong("last_sync_time", 0)
         val callLogTime = callLogPrefs.getLong("last_sync_time", 0)
         val messageTime = messagePrefs.getLong("last_sync_time", 0)
         val contactsTime = contactsPrefs.getLong("last_sync_time", 0)
+        val audioTime = audioPrefs.getLong("last_save_time", 0)
 
         // Format dates
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -174,9 +204,10 @@ class MainActivity : AppCompatActivity() {
         lastCallLogText.text = "Call Logs: " + if (callLogTime > 0) dateFormat.format(Date(callLogTime)) else "Never"
         lastMessageText.text = "Messages: " + if (messageTime > 0) dateFormat.format(Date(messageTime)) else "Never"
         lastContactsText.text = "Contacts: " + if (contactsTime > 0) dateFormat.format(Date(contactsTime)) else "Never"
+        lastAudioRecordingText.text = "Audio: " + if (audioTime > 0) dateFormat.format(Date(audioTime)) else "Never"
 
         // Update overall last sync time
-        val lastSync = maxOf(locationTime, callLogTime, messageTime, contactsTime)
+        val lastSync = maxOf(locationTime, callLogTime, messageTime, contactsTime, audioTime)
         if (lastSync > 0) {
             lastSyncText.text = "Last Sync: " + dateFormat.format(Date(lastSync))
         } else {
@@ -328,6 +359,16 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            AUDIO_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Audio permission granted, start recording service
+                    startRecordingService()
+                } else {
+                    // Update UI
+                    updatePermissionStatus()
+                    Toast.makeText(this, "Audio recording permission denied", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -404,13 +445,20 @@ class MainActivity : AppCompatActivity() {
         val contactsGranted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.READ_CONTACTS
         ) == PackageManager.PERMISSION_GRANTED
-        status.append("• Contacts: ${if (contactsGranted) "✓" else "✗"}\n\n")
+        status.append("• Contacts: ${if (contactsGranted) "✓" else "✗"}\n")
+
+        // Check audio recording permission
+        val audioPermissionGranted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        status.append("• Audio Recording: ${if (audioPermissionGranted) "✓" else "✗"}\n\n")
 
         // Summary
         if (areAllPermissionsGranted()) {
-            status.append("All permissions granted.\nService is running in the background.")
+            status.append("All permissions granted.\nServices are running in the background.")
             permissionsButton.text = "Permissions: All Granted"
             syncButton.isEnabled = true
+            recordingToggleButton.isEnabled = true
 
             // Load weather data if we have location permission
             loadWeatherData()
@@ -418,7 +466,13 @@ class MainActivity : AppCompatActivity() {
             status.append("Some permissions are missing.\nPlease grant all permissions for full functionality.")
             permissionsButton.text = "Grant Permissions"
             syncButton.isEnabled = false
+
+            // Only enable recording button if audio permission is granted
+            recordingToggleButton.isEnabled = audioPermissionGranted
         }
+
+        // Update recording button text
+        updateRecordingButtonText()
 
         statusText.text = status.toString()
     }
@@ -447,6 +501,62 @@ class MainActivity : AppCompatActivity() {
             updateLastSyncTimes()
         } else {
             updatePermissionStatus()
+        }
+    }
+
+    private fun toggleRecordingService() {
+        if (isRecordingServiceRunning) {
+            stopRecordingService()
+        } else {
+            // Check for audio permission before starting
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.RECORD_AUDIO
+                ) != PackageManager.PERMISSION_GRANTED) {
+
+                // Request audio permission
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.RECORD_AUDIO),
+                    AUDIO_PERMISSION_REQUEST_CODE
+                )
+            } else {
+                startRecordingService()
+            }
+        }
+    }
+
+    private fun startRecordingService() {
+        val intent = Intent(this, AudioRecordingService::class.java).apply {
+            action = AudioRecordingService.ACTION_START_RECORDING
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+
+        isRecordingServiceRunning = true
+        updateRecordingButtonText()
+        Toast.makeText(this, "Audio recording started", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun stopRecordingService() {
+        val intent = Intent(this, AudioRecordingService::class.java).apply {
+            action = AudioRecordingService.ACTION_STOP_RECORDING
+        }
+        startService(intent)
+
+        isRecordingServiceRunning = false
+        updateRecordingButtonText()
+        Toast.makeText(this, "Audio recording stopped", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateRecordingButtonText() {
+        recordingToggleButton.text = if (isRecordingServiceRunning) {
+            "Stop Audio Recording"
+        } else {
+            "Start Audio Recording"
         }
     }
 
