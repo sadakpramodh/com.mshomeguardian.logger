@@ -4,7 +4,10 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.multidex.MultiDex
-import com.mshomeguardian.logger.utils.DataSyncManager
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.ktx.appCheck
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
+import com.google.firebase.ktx.Firebase
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.WorkManagerInitializer
 
@@ -25,12 +28,10 @@ class LoggerApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize WorkManager first, before any other components
-        try {
-            WorkManagerInitializer.initialize(applicationContext)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing WorkManager", e)
-        }
+        // Initialize Firebase App Check
+        Firebase.appCheck.installAppCheckProviderFactory(
+            PlayIntegrityAppCheckProviderFactory.getInstance()
+        )
 
         // Initialize device ID
         try {
@@ -40,8 +41,9 @@ class LoggerApp : Application() {
             Log.e(TAG, "Error initializing device ID", e)
         }
 
-        // Note: We don't start services here as they require permissions
-        // Services will be started in MainActivity after permissions granted
-        Log.d(TAG, "Initialized app components")
+        // Initialize WorkManager using our utility class
+        WorkManagerInitializer.initialize(applicationContext)
+
+        // Workers will be scheduled after permissions are granted in MainActivity
     }
 }

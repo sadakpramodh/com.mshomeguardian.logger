@@ -37,6 +37,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
+import com.mshomeguardian.logger.transcription.TranscriptionManager
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
@@ -171,6 +176,14 @@ class MainActivity : AppCompatActivity() {
         // If all permissions are granted, ensure services are running
         if (areAllPermissionsGranted()) {
             startBackgroundServices()
+        }
+
+        // Add this to your MainActivity's onCreate or in a setup method
+        fun setupModelDirectories() {
+            val modelsDir = File(getExternalFilesDir(null), "vosk_models")
+            if (!modelsDir.exists()) {
+                modelsDir.mkdirs()
+            }
         }
     }
 
@@ -577,4 +590,66 @@ class MainActivity : AppCompatActivity() {
             sendBroadcast(updateIntent)
         }
     }
+
+    private fun checkAndExtractModels() {
+        lifecycleScope.launch {
+            val transcriptionManager = TranscriptionManager.getInstance(applicationContext)
+
+            // Check if English model is downloaded
+            if (!transcriptionManager.isModelDownloaded("en")) {
+                // Show an info dialog
+                withContext(Dispatchers.Main) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Language Models")
+                        .setMessage("Home Guardian needs to download language models for transcription. The English model (about 40MB) is recommended for transcribing English speech. Would you like to download it now over Wi-Fi?")
+                        .setPositiveButton("Download") { _, _ ->
+                            downloadEnglishModel()
+                        }
+                        .setNegativeButton("Later") { _, _ ->
+                            Toast.makeText(
+                                this@MainActivity,
+                                "You can download models in Settings later",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        .show()
+                }
+            }
+        }
+    }
+
+    private fun downloadEnglishModel() {
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle("Downloading English Model")
+            .setView(R.layout.dialog_download_progress)
+            .setCancelable(false)
+            .create()
+
+        progressDialog.show()
+
+        lifecycleScope.launch {
+            val transcriptionManager = TranscriptionManager.getInstance(applicationContext)
+
+            val success = withContext(Dispatchers.IO) {
+                transcriptionManager.downloadModelSync("en")
+            }
+
+            progressDialog.dismiss()
+
+            if (success) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "English model downloaded successfully",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Failed to download English model",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
 }

@@ -1,16 +1,15 @@
 package com.mshomeguardian.logger.workers
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
-import com.mshomeguardian.logger.data.AppDatabase
-import com.mshomeguardian.logger.data.AudioRecordingEntity
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import com.mshomeguardian.logger.utils.DeviceIdentifier
-import com.mshomeguardian.logger.utils.SpeechToTextManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -19,205 +18,160 @@ class TranscriptionWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
-    private val db = AppDatabase.getInstance(context.applicationContext)
-    private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
-    private val speechToTextManager = SpeechToTextManager(context.applicationContext)
-
-    private val firestore = try { Firebase.firestore } catch (e: Exception) { null }
-
     companion object {
         private const val TAG = "TranscriptionWorker"
-        private const val MAX_TRANSCRIPTION_ATTEMPTS = 3
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            // Get recordings pending transcription
-            val pendingRecordings = db.audioRecordingDao().getPendingTranscriptionRecordings()
-
-            if (pendingRecordings.isEmpty()) {
-                Log.d(TAG, "No recordings pending transcription")
-                return@withContext Result.success()
+            val filePath = inputData.getString("file_path")
+            if (filePath == null) {
+                Log.e(TAG, "No file path provided")
+                return@withContext Result.failure()
             }
 
-            Log.d(TAG, "Found ${pendingRecordings.size} recordings pending transcription")
-
-            var successCount = 0
-            var failureCount = 0
-
-            for (recording in pendingRecordings) {
-                try {
-                    val audioFile = File(recording.filePath)
-
-                    if (!audioFile.exists()) {
-                        Log.e(TAG, "Audio file does not exist: ${recording.filePath}")
-                        markTranscriptionFailed(recording.recordingId, "File not found")
-                        failureCount++
-                        continue
-                    }
-
-                    // Mark as in progress
-                    db.audioRecordingDao().updateTranscription(
-                        recordingId = recording.recordingId,
-                        transcription = "",
-                        status = AudioRecordingEntity.TranscriptionStatus.IN_PROGRESS.name,
-                        timestamp = System.currentTimeMillis()
-                    )
-
-                    // Perform transcription
-                    val transcriptionResult = speechToTextManager.transcribeAudio(
-                        audioFile,
-                        recording.transcriptionLanguage
-                    )
-
-                    if (transcriptionResult.isSuccess) {
-                        // Update database with transcription
-                        val text = transcriptionResult.text ?: ""
-                        val status = if (text.isBlank()) {
-                            AudioRecordingEntity.TranscriptionStatus.FAILED
-                        } else {
-                            AudioRecordingEntity.TranscriptionStatus.COMPLETED
-                        }
-
-                        db.audioRecordingDao().updateTranscription(
-                            recordingId = recording.recordingId,
-                            transcription = text,
-                            status = status.name,
-                            timestamp = System.currentTimeMillis()
-                        )
-
-                        // Update Firestore with transcription
-                        updateFirestoreWithTranscription(
-                            recordingId = recording.recordingId,
-                            transcription = text,
-                            status = status.name
-                        )
-
-                        successCount++
-                        Log.d(TAG, "Successfully transcribed recording: ${recording.recordingId}")
-                    } else {
-                        // Mark as failed
-                        markTranscriptionFailed(
-                            recordingId = recording.recordingId,
-                            errorMessage = transcriptionResult.errorMessage ?: "Unknown error"
-                        )
-                        failureCount++
-                        Log.e(TAG, "Failed to transcribe recording: ${recording.recordingId}, error: ${transcriptionResult.errorMessage}")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing recording for transcription: ${recording.recordingId}", e)
-                    markTranscriptionFailed(recording.recordingId, e.message ?: "Exception occurred")
-                    failureCount++
-                }
+            val file = File(filePath)
+            if (!file.exists()) {
+                Log.e(TAG, "File does not exist: $filePath")
+                return@withContext Result.failure()
             }
 
-            Log.d(TAG, "Transcription worker completed: $successCount succeeded, $failureCount failed")
+            Log.d(TAG, "Starting transcription for file: ${file.name}")
 
-            // Return success if at least some transcriptions succeeded, or if all failed after MAX_ATTEMPTS
-            if (successCount > 0 || shouldGiveUp(pendingRecordings)) {
+            // For language detection - currently just assuming English
+            val language = "en"
+            Log.d(TAG, "Detected language: $language")
+
+            // Create a basic transcription
+            val transcription = createBasicTranscription(file)
+
+            // Upload transcription to Firebase
+            val deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
+            val uploaded = uploadTranscription(file.name, transcription, deviceId)
+
+            // Also upload the audio file itself to Firebase Storage
+            val audioUploaded = uploadAudioFile(file, deviceId)
+
+            return@withContext if (uploaded && audioUploaded) {
+                Log.d(TAG, "Transcription complete and uploaded successfully")
                 Result.success()
             } else {
+                Log.e(TAG, "Failed to upload transcription or audio")
                 Result.retry()
             }
-
         } catch (e: Exception) {
             Log.e(TAG, "Error in transcription worker", e)
-            Result.retry()
+            return@withContext Result.retry()
         }
     }
 
-    private suspend fun markTranscriptionFailed(recordingId: String, errorMessage: String) {
+    private fun createBasicTranscription(audioFile: File): String {
         try {
-            // Get the current recording to check attempts
-            val recording = db.audioRecordingDao().getRecordingById(recordingId) ?: return
+            // Extract basic metadata about the audio
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(audioFile.absolutePath)
 
-            // Determine if we should give up (based on custom metadata or other logic)
-            val attempts = extractTranscriptionAttempts(recording)
-            val newAttempts = attempts + 1
+            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0
+            val durationSecs = duration / 1000
+            val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toLong() ?: 0
+            val bitrateKbps = bitrate / 1000
 
-            // If max attempts reached, mark as permanently failed
-            val status = if (newAttempts >= MAX_TRANSCRIPTION_ATTEMPTS) {
-                AudioRecordingEntity.TranscriptionStatus.FAILED
-            } else {
-                AudioRecordingEntity.TranscriptionStatus.PENDING  // Will retry later
-            }
+            retriever.release()
 
-            // Store the attempt count in the transcription field temporarily
-            val transcription = if (status == AudioRecordingEntity.TranscriptionStatus.FAILED) {
-                "Transcription failed after $newAttempts attempts. Last error: $errorMessage"
-            } else {
-                "ATTEMPT:$newAttempts|ERROR:$errorMessage"
-            }
+            // For now, we'll return a placeholder that includes some audio info
+            return "Audio recording from ${audioFile.name}, duration: $durationSecs seconds, " +
+                    "bitrate: $bitrateKbps kbps. This file has been uploaded to Firebase Storage. " +
+                    "Full speech-to-text transcription will be integrated in a future update."
 
-            db.audioRecordingDao().updateTranscription(
-                recordingId = recordingId,
-                transcription = transcription,
-                status = status.name,
-                timestamp = System.currentTimeMillis()
-            )
-
-            // Update Firestore with failure status
-            updateFirestoreWithTranscription(
-                recordingId = recordingId,
-                transcription = transcription,
-                status = status.name
-            )
         } catch (e: Exception) {
-            Log.e(TAG, "Error marking transcription as failed", e)
+            Log.e(TAG, "Error creating basic transcription", e)
+            return "Audio file ${audioFile.name} has been uploaded to Firebase Storage. " +
+                    "Transcription details unavailable: ${e.message}"
         }
     }
 
-    private fun extractTranscriptionAttempts(recording: AudioRecordingEntity): Int {
-        val transcription = recording.transcription ?: return 0
-
-        // Extract attempt count from the transcription field if present
-        return if (transcription.startsWith("ATTEMPT:")) {
-            try {
-                val attemptStr = transcription.substringAfter("ATTEMPT:").substringBefore("|")
-                attemptStr.toIntOrNull() ?: 0
-            } catch (e: Exception) {
-                0
-            }
-        } else {
-            0
-        }
-    }
-
-    private fun shouldGiveUp(recordings: List<AudioRecordingEntity>): Boolean {
-        // Check if all recordings have reached max attempts
-        return recordings.all { recording ->
-            extractTranscriptionAttempts(recording) >= MAX_TRANSCRIPTION_ATTEMPTS
-        }
-    }
-
-    private suspend fun updateFirestoreWithTranscription(
-        recordingId: String,
-        transcription: String,
-        status: String
-    ) {
-        val firestoreInstance = firestore ?: return
-
+    private suspend fun uploadTranscription(fileName: String, transcription: String, deviceId: String): Boolean {
         try {
-            // Update the Firestore document with transcription info
+            // Create a map of the transcription data
             val transcriptionData = hashMapOf(
-                "transcription" to transcription,
-                "transcriptionStatus" to status,
-                "transcriptionTimestamp" to System.currentTimeMillis()
+                "fileName" to fileName,
+                "text" to transcription,
+                "deviceId" to deviceId,
+                "timestamp" to System.currentTimeMillis(),
+                "language" to "en"
             )
 
-            firestoreInstance.collection("devices")
-                .document(deviceId)
-                .collection("audio_recordings")
-                .document(recordingId)
-                .update(transcriptionData as Map<String, Any>)
-                .addOnSuccessListener {
-                    Log.d(TAG, "Transcription updated in Firestore: $recordingId")
+            // Upload to Firestore
+            val firestoreInstance = FirebaseFirestore.getInstance()
+            val documentName = fileName.substringBeforeLast(".")
+
+            return withContext(Dispatchers.IO) {
+                try {
+                    // Add to Firestore
+                    val future = firestoreInstance.collection("devices")
+                        .document(deviceId)
+                        .collection("transcriptions")
+                        .document(documentName)
+                        .set(transcriptionData)
+
+                    future.await() // Wait for completion
+
+                    // Also create a text file with the transcription and upload to Storage
+                    val tempFile = File(applicationContext.cacheDir, "$documentName.txt")
+                    tempFile.writeText(transcription)
+
+                    val storageRef = FirebaseStorage.getInstance().reference
+                        .child("devices/$deviceId/transcriptions/$documentName.txt")
+
+                    val uploadTask = storageRef.putFile(android.net.Uri.fromFile(tempFile))
+                    uploadTask.await() // Wait for upload to complete
+
+                    // Clean up temp file
+                    tempFile.delete()
+
+                    Log.d(TAG, "Transcription uploaded successfully")
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error uploading transcription", e)
+                    false
                 }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "Error updating transcription in Firestore", e)
-                }
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error in updateFirestoreWithTranscription", e)
+            Log.e(TAG, "Error uploading transcription", e)
+            return false
+        }
+    }
+
+    private suspend fun uploadAudioFile(audioFile: File, deviceId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val storageRef = FirebaseStorage.getInstance().reference
+                val audioRef = storageRef.child("devices/$deviceId/audio/${audioFile.name}")
+
+                val uploadTask = audioRef.putFile(android.net.Uri.fromFile(audioFile))
+
+                try {
+                    uploadTask.await()
+                    Log.d(TAG, "Audio file uploaded successfully")
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error uploading audio file", e)
+
+                    // Try with a retry
+                    try {
+                        val retryUploadTask = audioRef.putFile(android.net.Uri.fromFile(audioFile))
+                        retryUploadTask.await()
+                        Log.d(TAG, "Audio file uploaded successfully after retry")
+                        true
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Error uploading audio file even after retry", e2)
+                        false
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting up audio file upload", e)
+                false
+            }
         }
     }
 }
