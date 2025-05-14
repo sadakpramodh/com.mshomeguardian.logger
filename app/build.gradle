@@ -169,9 +169,11 @@ dependencies {
     implementation 'com.google.firebase:firebase-appcheck-playintegrity:17.1.1'
 
     // VOSK Speech Recognition
-//    implementation 'com.alphacephei:vosk-android:0.3.47'
+    //    implementation 'com.alphacephei:vosk-android:0.3.47'
     implementation 'net.java.dev.jna:jna:5.13.0'
-//    implementation 'net.java.dev.jna:jna:5.13.0@aar'
+    //    implementation 'net.java.dev.jna:jna:5.13.0@aar'
 
+    // DeepSpeech for offline audio transcription
+    implementation 'org.mozilla.deepspeech:libdeepspeech:0.9.3@aar'
 
 }
