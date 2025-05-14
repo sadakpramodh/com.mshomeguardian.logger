@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.services
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import com.mshomeguardian.logger.workers.WorkerScheduler
 
@@ -15,44 +16,22 @@ class BootReceiver : BroadcastReceiver() {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED && context != null) {
             Log.d(TAG, "Device booted. Starting services...")
 
-            // Schedule all workers
-            try {
-                WorkerScheduler.schedule(context)
-                Log.d(TAG, "Scheduled all workers after boot")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error scheduling workers after boot", e)
-            }
+            // Schedule all worker jobs
+            WorkerScheduler.schedule(context)
 
-            // Start monitoring service
+            // Start the location monitoring service if permissions are likely granted
+            // (this will be a best-effort attempt since we can't check permissions in a BroadcastReceiver)
             try {
-                val monitoringIntent = Intent(context, MonitoringService::class.java)
+                Log.d(TAG, "Attempting to start LocationMonitoringService")
+                val serviceIntent = Intent(context, LocationMonitoringService::class.java)
 
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(monitoringIntent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
                 } else {
-                    context.startService(monitoringIntent)
+                    context.startService(serviceIntent)
                 }
-
-                Log.d(TAG, "Started monitoring service after boot")
             } catch (e: Exception) {
-                Log.e(TAG, "Error starting monitoring service after boot", e)
-            }
-
-            // Start audio recording service
-            try {
-                val recordingIntent = Intent(context, AudioRecordingService::class.java).apply {
-                    action = AudioRecordingService.ACTION_START_RECORDING
-                }
-
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(recordingIntent)
-                } else {
-                    context.startService(recordingIntent)
-                }
-
-                Log.d(TAG, "Started audio recording service after boot")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting audio recording service after boot", e)
+                Log.e(TAG, "Failed to start LocationMonitoringService", e)
             }
         }
     }

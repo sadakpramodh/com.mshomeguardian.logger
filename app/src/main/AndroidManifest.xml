@@ -11,34 +11,23 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <!-- Contacts Permission -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Audio Recording Permissions -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Network & Service Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Foreground Service Type Permissions (Android 14+) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- For Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Audio Recording Permissions -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-
-    <!-- Storage Permissions -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-
-    <!-- Wake Lock Permission -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-
-    <!-- Foreground Service Type Permissions (Android 14+) -->
+    <!-- For Android 14+ foreground service types -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
@@ -60,20 +49,44 @@
             </intent-filter>
         </activity>
 
-        <!-- Recording Service -->
+        <!-- Location monitoring service -->
         <service
-            android:name=".services.AudioRecordingService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
-
-        <!-- Monitoring Service -->
-        <service
-            android:name=".services.MonitoringService"
+            android:name=".services.LocationMonitoringService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- Recording service -->
+        <service
+            android:name=".services.RecordingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Home Screen Widget -->
+        <receiver
+            android:name=".widget.HomeGuardianWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.mshomeguardian.logger.widget.ACTION_SYNC" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/home_guardian_widget_info" />
+        </receiver>
+
+        <!-- Communication Receiver for calls and messages -->
+        <receiver
+            android:name=".services.CommunicationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Boot receiver to start services -->
         <receiver
             android:name=".services.BootReceiver"
             android:enabled="true"
@@ -82,8 +95,6 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
             </intent-filter>
         </receiver>
-
-        <!-- Remove ALL provider entries related to WorkManager -->
 
     </application>
 </manifest>

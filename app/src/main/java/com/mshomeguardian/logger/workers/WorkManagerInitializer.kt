@@ -11,15 +11,26 @@ import androidx.work.WorkManager
 object WorkManagerInitializer {
     private const val TAG = "WorkManagerInitializer"
 
+    // Add this flag to track if WorkManager has been initialized
+    @Volatile private var isInitialized = false
+
     /**
      * Initialize WorkManager safely
      */
+    @Synchronized
     fun initialize(context: Context) {
+        // Check already initialized flag first
+        if (isInitialized) {
+            Log.d(TAG, "WorkManager is already initialized by this app")
+            return
+        }
+
         try {
-            // Check if WorkManager is already initialized
+            // Check if WorkManager is already initialized by system
             try {
                 WorkManager.getInstance(context)
-                Log.d(TAG, "WorkManager is already initialized")
+                Log.d(TAG, "WorkManager is already initialized by system")
+                isInitialized = true
                 return
             } catch (e: IllegalStateException) {
                 // WorkManager isn't initialized yet, continue with initialization
@@ -33,6 +44,7 @@ object WorkManagerInitializer {
 
             // Initialize WorkManager with our configuration
             WorkManager.initialize(context, configuration)
+            isInitialized = true
 
             Log.d(TAG, "WorkManager initialized successfully")
         } catch (e: Exception) {
