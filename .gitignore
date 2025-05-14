@@ -31,3 +31,11 @@ desktop.ini
 
 java_pid14660.hprof
 app/src/main/assets/*
+/app/build/
+*.apk
+*.so
+*.hprof
+/app/build/
+/java_pid5604.hprof
+*.apk
+*.so
