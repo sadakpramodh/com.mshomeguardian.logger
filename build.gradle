@@ -1,17 +1,23 @@
 buildscript {
-    ext.kotlin_version = '1.7.20' // Downgraded to a more compatible version
+    ext.kotlin_version = '1.9.0' // More recent stable version
 
     repositories {
         google()
         mavenCentral()
-        maven { url "https://jcenter.bintray.com" } // For legacy dependencies
         maven { url "https://jitpack.io" } // For GitHub-based dependencies
+        maven {
+            url "https://maven.pkg.github.com/alphacep/vosk-android"
+            credentials {
+                username = System.getenv("GITHUB_USER")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.9.2' // Downgraded to a stable version
+        classpath 'com.android.tools.build:gradle:8.0.2' // Updated to modern AGP version
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-        classpath "com.google.gms:google-services:4.3.15" // Firebase
+        classpath 'com.google.gms:google-services:4.3.15' // Firebase services
     }
 }
 
@@ -19,13 +25,14 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-
-        // Add JCenter for legacy dependencies that might not be in Maven Central
-        maven { url "https://jcenter.bintray.com" }
-
-        // Add additional repositories if needed
         maven { url "https://jitpack.io" }
-        maven { url "https://dl.bintray.com/alphacep/vosk" } // For Vosk library
+        maven {
+            url "https://maven.pkg.github.com/alphacep/vosk-android"
+            credentials {
+                username = System.getenv("GITHUB_USER")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
     }
 }
 
@@ -33,19 +40,17 @@ task clean(type: Delete) {
     delete rootProject.buildDir
 }
 
-// Enforce a consistent set of dependencies across all modules
+// Subproject settings
 subprojects {
     tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
         kotlinOptions {
-            jvmTarget = "1.8" // Ensure all kotlin compile tasks use JVM 1.8
+            jvmTarget = "1.8"
         }
     }
 
     configurations.all {
         resolutionStrategy {
-            // Force core libraries to use specific versions
-            force 'org.jetbrains.kotlin:kotlin-stdlib:' + kotlin_version
-            force 'org.jetbrains.kotlin:kotlin-stdlib-common:' + kotlin_version
+            force "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
             force 'androidx.core:core-ktx:1.12.0'
             force 'androidx.appcompat:appcompat:1.6.1'
         }
