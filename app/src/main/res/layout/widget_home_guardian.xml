@@ -2,7 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="8dp"
+    android:padding="12dp"
     android:background="@drawable/widget_background">
 
     <TextView
@@ -27,13 +27,14 @@
 
         <ImageView
             android:id="@+id/widget_weather_icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@drawable/ic_weather_default" />
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:layout_marginStart="8dp">
 
@@ -42,7 +43,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="--°C"
-                android:textSize="18sp"
+                android:textSize="16sp"
                 android:textStyle="bold"
                 android:textColor="#FFFFFF" />
 
@@ -51,31 +52,74 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Weather unavailable"
-                android:textSize="14sp"
+                android:textSize="12sp"
                 android:textColor="#FFFFFF"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/widget_last_sync"
+    <LinearLayout
+        android:id="@+id/widget_stats_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/widget_weather_container"
         android:layout_marginTop="8dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_location_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Locations: --"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/widget_call_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Calls: --"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/widget_message_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Messages: --"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_last_sync"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/widget_stats_container"
+        android:layout_marginTop="6dp"
         android:text="Last Sync: Never"
         android:textSize="12sp"
+        android:textColor="#E0E0E0" />
+
+    <Button
+        android:id="@+id/widget_sync_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/widget_last_sync"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/widget_button_background"
+        android:text="Sync Now"
         android:textColor="#FFFFFF" />
 
     <TextView
         android:id="@+id/widget_update_time"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@id/widget_last_sync"
+        android:layout_below="@id/widget_sync_button"
         android:layout_marginTop="4dp"
         android:text="Widget updated: --"
         android:textSize="10sp"
-        android:textColor="#CCCCCC" />
-
+        android:textColor="#CCCCCC"
+        android:gravity="end" />
 </RelativeLayout>

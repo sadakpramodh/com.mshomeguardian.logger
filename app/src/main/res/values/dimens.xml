@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base dimensions -->
+    <dimen name="activity_horizontal_margin">16dp</dimen>
+    <dimen name="activity_vertical_margin">16dp</dimen>
+
+    <!-- Text sizes -->
+    <dimen name="text_size_small">12sp</dimen>
+    <dimen name="text_size_medium">14sp</dimen>
+    <dimen name="text_size_large">16sp</dimen>
+    <dimen name="text_size_xlarge">18sp</dimen>
+    <dimen name="text_size_xxlarge">22sp</dimen>
+
+    <!-- Margins and padding -->
+    <dimen name="margin_small">4dp</dimen>
+    <dimen name="margin_medium">8dp</dimen>
+    <dimen name="margin_large">16dp</dimen>
+    <dimen name="margin_xlarge">24dp</dimen>
+
+    <!-- Widget dimensions -->
+    <dimen name="widget_min_width">180dp</dimen>
+    <dimen name="widget_min_height">110dp</dimen>
+    <dimen name="widget_padding">12dp</dimen>
+    <dimen name="widget_icon_size">40dp</dimen>
+    <dimen name="widget_weather_icon_size">48dp</dimen>
+</resources>

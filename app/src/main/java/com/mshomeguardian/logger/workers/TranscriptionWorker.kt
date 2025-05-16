@@ -12,7 +12,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
+/**
+ * Simplified implementation of TranscriptionWorker that focuses on audio upload
+ * rather than transcription functionality. This version removes dependencies
+ * on external libraries like DeepSpeech that are causing build issues.
+ */
 class TranscriptionWorker(
     context: Context,
     params: WorkerParameters
@@ -25,6 +31,8 @@ class TranscriptionWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
             val filePath = inputData.getString("file_path")
+            val deviceId = inputData.getString("device_id") ?: DeviceIdentifier.getPersistentDeviceId(applicationContext)
+
             if (filePath == null) {
                 Log.e(TAG, "No file path provided")
                 return@withContext Result.failure()
@@ -38,21 +46,20 @@ class TranscriptionWorker(
 
             Log.d(TAG, "Starting processing for file: ${file.name}")
 
-            // Skip transcription and generate basic info
+            // Extract basic info about the audio
             val basicInfo = createBasicInfo(file)
 
-            // Upload info to Firebase
-            val deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
-            val uploaded = uploadTranscription(file.name, basicInfo, deviceId)
-
-            // Upload the audio file itself to Firebase Storage
+            // Upload the audio file to Firebase Storage
             val audioUploaded = uploadAudioFile(file, deviceId)
 
-            return@withContext if (uploaded && audioUploaded) {
-                Log.d(TAG, "Processing complete and uploaded successfully")
+            // Upload basic info to Firestore
+            val metadataUploaded = uploadMetadata(file.name, basicInfo, deviceId)
+
+            return@withContext if (audioUploaded && metadataUploaded) {
+                Log.d(TAG, "Audio file uploaded successfully")
                 Result.success()
             } else {
-                Log.e(TAG, "Failed to upload info or audio")
+                Log.e(TAG, "Failed to upload audio or metadata")
                 Result.retry()
             }
         } catch (e: Exception) {
@@ -61,20 +68,15 @@ class TranscriptionWorker(
         }
     }
 
-    private fun transcribeAudio(audioFile: File): String {
-        Log.d(TAG, "Speech recognition functionality is temporarily unavailable")
-        return createBasicInfo(audioFile) +
-                "\n\nSpeech transcription is temporarily unavailable. Audio file has been securely uploaded."
-    }
-
     private fun createBasicInfo(audioFile: File): String {
         try {
             // Extract basic metadata about the audio
             val retriever = MediaMetadataRetriever()
             retriever.setDataSource(audioFile.absolutePath)
 
-            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0
-            val durationSecs = duration / 1000
+            val durationString = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val duration = durationString?.toLongOrNull() ?: 0L
+            val durationSecs = duration / 1000L
             val minutes = durationSecs / 60
             val seconds = durationSecs % 60
 
@@ -96,54 +98,40 @@ class TranscriptionWorker(
         }
     }
 
-    private suspend fun uploadTranscription(fileName: String, transcription: String, deviceId: String): Boolean {
+    private suspend fun uploadMetadata(fileName: String, info: String, deviceId: String): Boolean {
         try {
-            // Create a map of the transcription data
-            val transcriptionData = hashMapOf(
+            // Create a map of the audio metadata
+            val metadata = hashMapOf(
                 "fileName" to fileName,
-                "text" to transcription,
+                "info" to info,
                 "deviceId" to deviceId,
                 "timestamp" to System.currentTimeMillis(),
-                "language" to "en-US"
+                "status" to "uploaded_without_transcription"
             )
 
             // Upload to Firestore
             val firestoreInstance = FirebaseFirestore.getInstance()
-            val documentName = fileName.substringBeforeLast(".")
+            val documentId = fileName.substringBeforeLast(".")
 
             return withContext(Dispatchers.IO) {
                 try {
                     // Add to Firestore
-                    val future = firestoreInstance.collection("devices")
+                    firestoreInstance.collection("devices")
                         .document(deviceId)
-                        .collection("transcriptions")
-                        .document(documentName)
-                        .set(transcriptionData)
+                        .collection("audio_recordings")
+                        .document(documentId)
+                        .set(metadata)
+                        .await()
 
-                    future.await() // Wait for completion
-
-                    // Also create a text file with the transcription and upload to Storage
-                    val tempFile = File(applicationContext.cacheDir, "$documentName.txt")
-                    tempFile.writeText(transcription)
-
-                    val storageRef = FirebaseStorage.getInstance().reference
-                        .child("devices/$deviceId/transcriptions/$documentName.txt")
-
-                    val uploadTask = storageRef.putFile(android.net.Uri.fromFile(tempFile))
-                    uploadTask.await() // Wait for upload to complete
-
-                    // Clean up temp file
-                    tempFile.delete()
-
-                    Log.d(TAG, "Info uploaded successfully")
+                    Log.d(TAG, "Audio metadata uploaded successfully")
                     true
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error uploading info", e)
+                    Log.e(TAG, "Error uploading audio metadata", e)
                     false
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error uploading info", e)
+            Log.e(TAG, "Error preparing metadata upload", e)
             return false
         }
     }

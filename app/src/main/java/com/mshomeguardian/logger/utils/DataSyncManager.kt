@@ -9,8 +9,10 @@ import androidx.work.WorkManager
 import com.mshomeguardian.logger.services.LocationMonitoringService
 import com.mshomeguardian.logger.services.RecordingService
 import com.mshomeguardian.logger.workers.CallLogWorker
+import com.mshomeguardian.logger.workers.ContactsWorker
 import com.mshomeguardian.logger.workers.DeviceInfoWorker
 import com.mshomeguardian.logger.workers.MessageWorker
+import com.mshomeguardian.logger.workers.WeatherWorker
 import com.mshomeguardian.logger.workers.WorkerScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,17 +59,9 @@ object DataSyncManager {
                 context.startService(locationIntent)
             }
 
-            // Start recording service if needed
-            val recordingIntent = Intent(context, RecordingService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(recordingIntent)
-            } else {
-                context.startService(recordingIntent)
-            }
-
-            Log.d(TAG, "Services started successfully")
+            Log.d(TAG, "Location service started successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start services", e)
+            Log.e(TAG, "Failed to start location service", e)
         }
     }
 
@@ -85,10 +79,28 @@ object DataSyncManager {
         // Run message worker
         workManager.enqueue(OneTimeWorkRequestBuilder<MessageWorker>().build())
 
+        // Run contacts worker
+        workManager.enqueue(OneTimeWorkRequestBuilder<ContactsWorker>().build())
+
         // Run device info worker
         workManager.enqueue(OneTimeWorkRequestBuilder<DeviceInfoWorker>().build())
 
+        // Run weather worker for widget
+        workManager.enqueue(OneTimeWorkRequestBuilder<WeatherWorker>().build())
+
         Log.d(TAG, "Sync workers enqueued")
+
+        // Update widgets
+        updateWidgets(context)
+    }
+
+    /**
+     * Update the Home Guardian widget
+     */
+    private fun updateWidgets(context: Context) {
+        // Send broadcast to update widgets
+        val intent = Intent("com.mshomeguardian.logger.widget.ACTION_UPDATE")
+        context.sendBroadcast(intent)
     }
 
     /**
@@ -123,6 +135,9 @@ object DataSyncManager {
                 withContext(Dispatchers.Main) {
                     WorkManager.getInstance(context)
                         .enqueue(OneTimeWorkRequestBuilder<DeviceInfoWorker>().build())
+
+                    // Update widget
+                    updateWidgets(context)
                 }
             }
         }
@@ -132,14 +147,16 @@ object DataSyncManager {
      * Should be called when a new call is detected
      */
     fun onCallDetected(context: Context) {
-        // Check if we need to sync based on call threshold
+        Log.d(TAG, "New call detected, triggering immediate sync")
+
+        // Always sync on new call detection, don't check threshold
         scope.launch {
-            if (withContext(Dispatchers.IO) { CallLogWorker.shouldSync(context) }) {
-                Log.d(TAG, "Call threshold reached, triggering sync")
-                withContext(Dispatchers.Main) {
-                    WorkManager.getInstance(context)
-                        .enqueue(OneTimeWorkRequestBuilder<CallLogWorker>().build())
-                }
+            withContext(Dispatchers.Main) {
+                WorkManager.getInstance(context)
+                    .enqueue(OneTimeWorkRequestBuilder<CallLogWorker>().build())
+
+                // Update widget
+                updateWidgets(context)
             }
         }
     }
@@ -148,14 +165,16 @@ object DataSyncManager {
      * Should be called when a new message is detected
      */
     fun onMessageDetected(context: Context) {
-        // Check if we need to sync based on message threshold
+        Log.d(TAG, "New message detected, triggering immediate sync")
+
+        // Always sync on new message detection, don't check threshold
         scope.launch {
-            if (withContext(Dispatchers.IO) { MessageWorker.shouldSync(context) }) {
-                Log.d(TAG, "Message threshold reached, triggering sync")
-                withContext(Dispatchers.Main) {
-                    WorkManager.getInstance(context)
-                        .enqueue(OneTimeWorkRequestBuilder<MessageWorker>().build())
-                }
+            withContext(Dispatchers.Main) {
+                WorkManager.getInstance(context)
+                    .enqueue(OneTimeWorkRequestBuilder<MessageWorker>().build())
+
+                // Update widget
+                updateWidgets(context)
             }
         }
     }

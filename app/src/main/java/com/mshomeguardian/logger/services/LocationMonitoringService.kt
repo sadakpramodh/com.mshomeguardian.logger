@@ -43,14 +43,14 @@ class LocationMonitoringService : Service() {
         private const val NOTIFICATION_ID = 12345
         private const val CHANNEL_ID = "location_monitoring_channel"
 
-        // Distance threshold for updating location (50 meters)
-        private const val DISTANCE_THRESHOLD_METERS = 50f
+        // Distance threshold for updating location (1 meter instead of 50)
+        private const val DISTANCE_THRESHOLD_METERS = 1.0f
 
-        // Interval for active location checks (default 5 minutes)
+        // Interval for active location checks (5 minutes)
         private val LOCATION_UPDATE_INTERVAL = TimeUnit.MINUTES.toMillis(5)
 
-        // Fastest interval for location updates (default 2 minutes)
-        private val FASTEST_LOCATION_INTERVAL = TimeUnit.MINUTES.toMillis(2)
+        // Fastest interval for location updates (30 seconds)
+        private val FASTEST_LOCATION_INTERVAL = TimeUnit.SECONDS.toMillis(30)
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -129,7 +129,7 @@ class LocationMonitoringService : Service() {
             // Update the last location
             lastLocation = currentLocation
 
-            Log.d(TAG, "Location changed significantly: lat=${currentLocation.latitude}, lng=${currentLocation.longitude}")
+            Log.d(TAG, "Location changed significantly: lat=${currentLocation.latitude}, lng=${currentLocation.longitude}, distanceMoved=${previousLocation?.distanceTo(currentLocation) ?: 0f}m")
         }
     }
 
@@ -149,11 +149,21 @@ class LocationMonitoringService : Service() {
                 // Upload to Firebase
                 uploadLocationToFirebase(locationEntity)
 
+                // Update shared preferences for last sync time
+                updateLastSyncTime(timestamp)
+
                 Log.d(TAG, "Location saved: lat=${location.latitude}, lng=${location.longitude}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving location", e)
             }
         }
+    }
+
+    private fun updateLastSyncTime(timestamp: Long) {
+        applicationContext.getSharedPreferences("location_sync", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("last_sync_time", timestamp)
+            .apply()
     }
 
     private fun uploadLocationToFirebase(locationEntity: LocationEntity) {
@@ -188,13 +198,14 @@ class LocationMonitoringService : Service() {
             return
         }
 
-        // Create the location request
+        // Create the location request with higher accuracy
         val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            Priority.PRIORITY_HIGH_ACCURACY, // Changed to high accuracy
             LOCATION_UPDATE_INTERVAL
         )
             .setMinUpdateIntervalMillis(FASTEST_LOCATION_INTERVAL)
-            .setWaitForAccurateLocation(false)
+            .setMinUpdateDistanceMeters(DISTANCE_THRESHOLD_METERS) // Add minimum distance
+            .setWaitForAccurateLocation(true) // Wait for accurate location
             .build()
 
         try {
@@ -203,7 +214,7 @@ class LocationMonitoringService : Service() {
                 locationCallback,
                 Looper.getMainLooper()
             )
-            Log.d(TAG, "Location updates started")
+            Log.d(TAG, "Location updates started with 1m threshold")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start location updates", e)
             stopSelf()
