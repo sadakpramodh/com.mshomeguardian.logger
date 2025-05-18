@@ -50,6 +50,7 @@
             android:enabled="false"
             android:layout_marginBottom="16dp" />
 
+        <!-- Data Collection Status Section -->
         <TextView
             android:id="@+id/dataStatusText"
             android:layout_width="match_parent"

@@ -177,14 +177,6 @@ class MainActivity : AppCompatActivity() {
         if (areAllPermissionsGranted()) {
             startBackgroundServices()
         }
-
-        // Add this to your MainActivity's onCreate or in a setup method
-        fun setupModelDirectories() {
-            val modelsDir = File(getExternalFilesDir(null), "vosk_models")
-            if (!modelsDir.exists()) {
-                modelsDir.mkdirs()
-            }
-        }
     }
 
     private fun startRecording() {
@@ -216,6 +208,13 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         // Stop periodic updates
         updateHandler.removeCallbacks(updateRunnable)
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Release transcription resources
+        liveTranscriptionManager.release()
     }
 
     private fun requestAllPermissions() {
@@ -651,5 +650,4 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-
 }

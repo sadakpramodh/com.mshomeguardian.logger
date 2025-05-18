@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Home Guardian</string>
+
+    <!-- Permission strings -->
+    <string name="permission_required">Permission Required</string>
+    <string name="permission_denied">Permission Denied</string>
+
+    <!-- Recording strings -->
+    <string name="start_recording">Start Audio Recording</string>
+    <string name="stop_recording">Stop Audio Recording</string>
+
+    <!-- Transcription strings -->
+    <string name="start_transcription">Start Transcription</string>
+    <string name="stop_transcription">Stop Transcription</string>
+    <string name="transcription_activity_title">Live Transcription</string>
+</resources>
