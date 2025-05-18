@@ -23,6 +23,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- For Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -70,6 +71,20 @@
         <!-- Recording service -->
         <service
             android:name=".services.RecordingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Monitoring service -->
+        <service
+            android:name=".services.MonitoringService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location|microphone" />
+
+        <!-- AudioRecordingService -->
+        <service
+            android:name=".services.AudioRecordingService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />

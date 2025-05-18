@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId "com.mshomeguardian.logger"
-        minSdk 21
+        minSdk 26  // Updated to Android 8.0 (API 26)
         targetSdk 34
         versionCode 1
         versionName "1.0"

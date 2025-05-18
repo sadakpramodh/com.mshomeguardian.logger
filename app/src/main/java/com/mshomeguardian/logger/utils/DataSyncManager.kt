@@ -7,7 +7,7 @@ import android.util.Log
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.mshomeguardian.logger.services.LocationMonitoringService
-import com.mshomeguardian.logger.services.RecordingService
+import com.mshomeguardian.logger.services.AudioRecordingService
 import com.mshomeguardian.logger.workers.CallLogWorker
 import com.mshomeguardian.logger.workers.ContactsWorker
 import com.mshomeguardian.logger.workers.DeviceInfoWorker
@@ -53,6 +53,8 @@ object DataSyncManager {
 
             // Start location monitoring service
             val locationIntent = Intent(context, LocationMonitoringService::class.java)
+
+            // Use startForegroundService for Android 8.0+ (API 26+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(locationIntent)
             } else {
@@ -186,7 +188,10 @@ object DataSyncManager {
         try {
             if (start) {
                 Log.d(TAG, "Starting recording service")
-                val intent = Intent(context, RecordingService::class.java)
+                val intent = Intent(context, AudioRecordingService::class.java)
+                intent.action = AudioRecordingService.ACTION_START_RECORDING
+
+                // Use startForegroundService for Android 8.0+ (API 26+)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
@@ -194,7 +199,9 @@ object DataSyncManager {
                 }
             } else {
                 Log.d(TAG, "Stopping recording service")
-                context.stopService(Intent(context, RecordingService::class.java))
+                val intent = Intent(context, AudioRecordingService::class.java)
+                intent.action = AudioRecordingService.ACTION_STOP_RECORDING
+                context.startService(intent)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling recording service", e)
@@ -205,6 +212,6 @@ object DataSyncManager {
      * Check if recording service is running
      */
     fun isRecordingServiceRunning(): Boolean {
-        return RecordingService.isRunning()
+        return AudioRecordingService.isRunning()
     }
 }

@@ -1,8 +1,7 @@
 package com.mshomeguardian.logger.ui
 
 import android.Manifest
-import android.app.NotificationManager
-import android.appwidget.AppWidgetManager
+import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -17,34 +16,35 @@ import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.services.LocationMonitoringService
-import com.mshomeguardian.logger.services.RecordingService
 import com.mshomeguardian.logger.utils.DataSyncManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.widget.HomeGuardianWidget
-import com.mshomeguardian.logger.workers.WorkerScheduler
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.appwidget.AppWidgetManager
 import androidx.lifecycle.lifecycleScope
 import com.mshomeguardian.logger.transcription.TranscriptionManager
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
+/**
+ * Main activity for app configuration and status
+ * Updated for Android 8+ compatibility
+ */
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
+
+    // Request codes for permission handling
     private val LOCATION_PERMISSION_REQUEST_CODE = 101
     private val BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE = 102
     private val CALL_SMS_PERMISSION_REQUEST_CODE = 103
@@ -55,6 +55,7 @@ class MainActivity : AppCompatActivity() {
     // Update interval for status information (10 seconds)
     private val STATUS_UPDATE_INTERVAL = 10000L
 
+    // UI elements
     private lateinit var statusText: TextView
     private lateinit var permissionsButton: Button
     private lateinit var deviceIdText: TextView
@@ -76,28 +77,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // All required permissions
-    private val requiredPermissions = arrayOf(
+    // Core permissions that all Android versions need
+    private val corePermissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
         Manifest.permission.READ_CALL_LOG,
         Manifest.permission.READ_SMS,
         Manifest.permission.READ_PHONE_STATE,
         Manifest.permission.READ_CONTACTS,
         Manifest.permission.RECEIVE_SMS,
-        Manifest.permission.RECORD_AUDIO // Added RECORD_AUDIO permission
+        Manifest.permission.RECORD_AUDIO
     )
 
-    // Additional background location permission for Android 10+
-    private val backgroundLocationPermission =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        } else null
+    // Special permissions that need separate handling for Android 10+
+    private val androidQPlusPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    } else {
+        emptyArray()
+    }
 
     // Notification permission for Android 13+
-    private val notificationPermission =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.POST_NOTIFICATIONS
-        } else null
+    private val android13PlusPermissions = if (Build.VERSION.SDK_INT >= 33) { // Android 13 = API 33
+        arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+    } else {
+        emptyArray()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,7 +131,7 @@ class MainActivity : AppCompatActivity() {
 
         // Set up sync button
         syncButton.setOnClickListener {
-            if (areAllPermissionsGranted()) {
+            if (areAllCorePermissionsGranted()) {
                 Toast.makeText(this, "Starting manual sync...", Toast.LENGTH_SHORT).show()
                 DataSyncManager.syncAll(applicationContext)
                 updateWidgets()
@@ -142,31 +146,16 @@ class MainActivity : AppCompatActivity() {
 
         // Set up recording button
         recordingButton.setOnClickListener {
-            if (areAllPermissionsGranted()) {
-                val isRecording = DataSyncManager.isRecordingServiceRunning()
-                if (isRecording) {
-                    // Stop recording
-                    DataSyncManager.toggleRecordingService(applicationContext, false)
-                    recordingButton.text = "Start Audio Recording"
-                    audioStatusText.text = "Audio Recording: Off"
-                } else {
-                    // Request RECORD_AUDIO permission if not granted
-                    if (ContextCompat.checkSelfPermission(
-                            this, Manifest.permission.RECORD_AUDIO
-                        ) != PackageManager.PERMISSION_GRANTED) {
-                        ActivityCompat.requestPermissions(
-                            this,
-                            arrayOf(Manifest.permission.RECORD_AUDIO),
-                            RECORD_AUDIO_PERMISSION_REQUEST_CODE
-                        )
-                    } else {
-                        // Start recording
-                        startRecording()
-                    }
-                }
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED) {
+                toggleRecordingService()
             } else {
-                Toast.makeText(this, "Please grant all permissions first", Toast.LENGTH_LONG).show()
-                updatePermissionStatus()
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.RECORD_AUDIO),
+                    RECORD_AUDIO_PERMISSION_REQUEST_CODE
+                )
             }
         }
 
@@ -174,29 +163,69 @@ class MainActivity : AppCompatActivity() {
         updatePermissionStatus()
 
         // If all permissions are granted, ensure services are running
-        if (areAllPermissionsGranted()) {
+        if (areAllCorePermissionsGranted()) {
             startBackgroundServices()
+        }
+
+        // On Android 8+, check if we need to prompt about special power saving features
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            checkBatteryOptimizations()
         }
     }
 
-    private fun startRecording() {
-        // Start recording
-        DataSyncManager.toggleRecordingService(applicationContext, true)
-        recordingButton.text = "Stop Audio Recording"
-        audioStatusText.text = "Audio Recording: On"
+    /**
+     * Toggle recording service on/off based on current state
+     */
+    private fun toggleRecordingService() {
+        val isRecording = DataSyncManager.isRecordingServiceRunning()
+        if (isRecording) {
+            // Stop recording
+            DataSyncManager.toggleRecordingService(applicationContext, false)
+            recordingButton.text = "Start Audio Recording"
+            audioStatusText.text = "Audio Recording: Off"
+        } else {
+            // Start recording
+            DataSyncManager.toggleRecordingService(applicationContext, true)
+            recordingButton.text = "Stop Audio Recording"
+            audioStatusText.text = "Audio Recording: On"
+        }
+    }
+
+    /**
+     * Check if the device is ignoring battery optimizations for the app
+     * This is needed for reliable background operation on Android 8+
+     */
+    private fun checkBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val packageName = packageName
+
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                AlertDialog.Builder(this)
+                    .setTitle("Battery Optimization")
+                    .setMessage("To ensure Home Guardian works properly in the background, please disable battery optimization for this app.")
+                    .setPositiveButton("Settings") { _, _ ->
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("Later", null)
+                    .show()
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
         // Update permission status each time activity is resumed
-        // This handles the case where user grants permissions from Settings
         updatePermissionStatus()
 
         // Start periodic updates
         updateHandler.post(updateRunnable)
 
         // Also check for pending syncs
-        if (areAllPermissionsGranted()) {
+        if (areAllCorePermissionsGranted()) {
             DataSyncManager.checkTriggers(applicationContext)
         }
 
@@ -212,79 +241,28 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // No need to release transcription resources as there's no liveTranscriptionManager initialized
     }
 
+    /**
+     * Request permissions in the proper sequence for Android 8+
+     */
     private fun requestAllPermissions() {
         Log.d(TAG, "Requesting all permissions")
 
-        // Standard permissions first
+        // First, request core permissions
         ActivityCompat.requestPermissions(
             this,
-            requiredPermissions,
+            corePermissions,
             ALL_PERMISSIONS_REQUEST_CODE
         )
+
+        // Special permissions like background location will be requested
+        // in follow-up dialogs after the core permissions are granted
     }
 
-    private fun checkBackgroundLocationPermission() {
-        // Only for Android 10 and above
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (ContextCompat.checkSelfPermission(
-                    this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                ) != PackageManager.PERMISSION_GRANTED) {
-                showBackgroundLocationRationale()
-            } else {
-                // Check notification permission on Android 13+
-                checkNotificationPermission()
-            }
-        } else {
-            // Check notification permission for Android 13+
-            checkNotificationPermission()
-        }
-    }
-
-    private fun checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
-                    this, Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED) {
-
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    NOTIFICATION_PERMISSION_REQUEST_CODE
-                )
-            } else {
-                // All permissions granted, start services
-                startBackgroundServices()
-            }
-        } else {
-            // No notification permission needed, start services
-            startBackgroundServices()
-        }
-    }
-
-    private fun showBackgroundLocationRationale() {
-        AlertDialog.Builder(this)
-            .setTitle("Background Location Access Needed")
-            .setMessage("This app tracks your location in the background to provide home security monitoring. Please select 'Allow all the time' on the next screen.")
-            .setPositiveButton("Grant Permission") { _, _ ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    ActivityCompat.requestPermissions(
-                        this,
-                        arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
-                        BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE
-                    )
-                }
-            }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                dialog.dismiss()
-                updatePermissionStatus()
-            }
-            .create()
-            .show()
-    }
-
+    /**
+     * Check for permission result and request additional permissions as needed
+     */
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -294,60 +272,48 @@ class MainActivity : AppCompatActivity() {
 
         when (requestCode) {
             ALL_PERMISSIONS_REQUEST_CODE -> {
-                val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-                Log.d(TAG, "Standard permissions result: allGranted=$allGranted")
+                if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                    Log.d(TAG, "Core permissions granted")
 
-                if (allGranted) {
-                    // Now check for background permission if needed
-                    if (backgroundLocationPermission != null) {
-                        checkBackgroundLocationPermission()
+                    // For Android 10+, background location needs separate request
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        requestBackgroundLocationPermission()
+                    } else if (Build.VERSION.SDK_INT >= 33) { // Android 13+
+                        requestNotificationPermission()
                     } else {
-                        checkNotificationPermission()
+                        // All permissions granted, start services
+                        startBackgroundServices()
                     }
                 } else {
-                    // Show which permissions are still needed
+                    // Some permissions denied
                     updatePermissionStatus()
 
-                    // Check if the user clicked "never ask again" on any permission
-                    val showRationale = requiredPermissions.any {
-                        ActivityCompat.shouldShowRequestPermissionRationale(this, it)
-                    }
-
-                    if (!showRationale) {
-                        // User clicked "never ask again" for at least one permission
+                    // Check if user selected "never ask again"
+                    if (!shouldShowRationaleForAnyPermission(corePermissions)) {
                         showSettingsDialog()
                     }
                 }
             }
+
             BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Background location permission granted
-                    Log.d(TAG, "Background location permission granted")
-                    checkNotificationPermission()
+                if (Build.VERSION.SDK_INT >= 33) { // Android 13+
+                    requestNotificationPermission()
                 } else {
-                    // Update UI to show missing permission
-                    Log.d(TAG, "Background location permission denied")
-                    updatePermissionStatus()
-
-                    // Check if user clicked "never ask again"
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                        !ActivityCompat.shouldShowRequestPermissionRationale(
-                            this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                        )
-                    ) {
-                        showSettingsDialog()
-                    }
+                    // All permissions processed, start services
+                    startBackgroundServices()
                 }
+                updatePermissionStatus()
             }
+
             NOTIFICATION_PERMISSION_REQUEST_CODE -> {
-                // Even if notification permission is denied, we can still start the services
-                Log.d(TAG, "Notification permission result: ${if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) "granted" else "denied"}")
+                // Final permission processed, start services
                 startBackgroundServices()
+                updatePermissionStatus()
             }
+
             RECORD_AUDIO_PERMISSION_REQUEST_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Record audio permission granted, start recording
-                    startRecording()
+                    toggleRecordingService()
                 } else {
                     Toast.makeText(this, "Audio recording permission denied", Toast.LENGTH_SHORT).show()
                 }
@@ -355,52 +321,129 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Request background location permission (Android 10+)
+     */
+    private fun requestBackgroundLocationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED) {
+
+                // Show explanation dialog
+                AlertDialog.Builder(this)
+                    .setTitle("Background Location Needed")
+                    .setMessage("Home Guardian needs background location access to monitor your location even when the app is closed. On the next screen, please select 'Allow all the time'.")
+                    .setPositiveButton("Continue") { _, _ ->
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                            BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE
+                        )
+                    }
+                    .setNegativeButton("Skip") { _, _ ->
+                        // Move to next permission or start services
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            requestNotificationPermission()
+                        } else {
+                            startBackgroundServices()
+                        }
+                    }
+                    .show()
+            } else {
+                // Already granted, move to next permission
+                if (Build.VERSION.SDK_INT >= 33) {
+                    requestNotificationPermission()
+                } else {
+                    startBackgroundServices()
+                }
+            }
+        }
+    }
+
+    /**
+     * Request notification permission (Android 13+)
+     */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED) {
+
+                // Show explanation dialog
+                AlertDialog.Builder(this)
+                    .setTitle("Notifications Needed")
+                    .setMessage("Home Guardian uses notifications to keep you informed of its status and to run reliably in the background.")
+                    .setPositiveButton("Continue") { _, _ ->
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                            NOTIFICATION_PERMISSION_REQUEST_CODE
+                        )
+                    }
+                    .setNegativeButton("Skip") { _, _ ->
+                        // Start services even without notification permission
+                        startBackgroundServices()
+                    }
+                    .show()
+            } else {
+                // Already granted, start services
+                startBackgroundServices()
+            }
+        }
+    }
+
+    /**
+     * Check if we should show rationale for any permission
+     */
+    private fun shouldShowRationaleForAnyPermission(permissions: Array<String>): Boolean {
+        return permissions.any { permission ->
+            ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+        }
+    }
+
+    /**
+     * Shows dialog to direct user to app settings when permissions are permanently denied
+     */
     private fun showSettingsDialog() {
         AlertDialog.Builder(this)
             .setTitle("Permissions Required")
-            .setMessage("This app needs all the requested permissions to function properly. Please enable them in app settings.")
-            .setPositiveButton("Go to Settings") { _, _ ->
+            .setMessage("Some necessary permissions have been denied permanently. Please enable them in app settings.")
+            .setPositiveButton("Settings") { _, _ ->
                 // Open app settings
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                val uri = Uri.fromParts("package", packageName, null)
-                intent.data = uri
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", packageName, null)
+                }
                 startActivity(intent)
             }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                dialog.dismiss()
-                updatePermissionStatus()
-            }
-            .create()
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun areAllPermissionsGranted(): Boolean {
-        val standardPermissionsGranted = requiredPermissions.all {
-            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    /**
+     * Check if all core permissions are granted
+     */
+    private fun areAllCorePermissionsGranted(): Boolean {
+        return corePermissions.all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         }
-
-        val backgroundPermissionGranted = if (backgroundLocationPermission != null) {
-            ContextCompat.checkSelfPermission(
-                this, backgroundLocationPermission
-            ) == PackageManager.PERMISSION_GRANTED
-        } else true
-
-        // Notification permission is not critical, so we don't check it here
-
-        return standardPermissionsGranted && backgroundPermissionGranted
     }
 
+    /**
+     * Update UI to show permission status
+     */
     private fun updatePermissionStatus() {
         val status = StringBuilder()
         status.append("Permission Status:\n\n")
 
-        // Check location permission
-        val locationGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        status.append("• Location: ${if (locationGranted) "✓" else "✗"}\n")
+        // Core permissions
+        for (permission in corePermissions) {
+            val isGranted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+            val permissionName = getReadablePermissionName(permission)
+            status.append("• $permissionName: ${if (isGranted) "✓" else "✗"}\n")
+        }
 
-        // Check background location (Android 10+)
+        // Background location for Android 10+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val backgroundLocationGranted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
@@ -408,49 +451,19 @@ class MainActivity : AppCompatActivity() {
             status.append("• Background Location: ${if (backgroundLocationGranted) "✓" else "✗"}\n")
         }
 
-        // Check call log permission
-        val callLogGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.READ_CALL_LOG
-        ) == PackageManager.PERMISSION_GRANTED
-        status.append("• Call Log: ${if (callLogGranted) "✓" else "✗"}\n")
-
-        // Check SMS permission
-        val smsGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.READ_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-        status.append("• SMS: ${if (smsGranted) "✓" else "✗"}\n")
-
-        // Check phone state permission
-        val phoneStateGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.READ_PHONE_STATE
-        ) == PackageManager.PERMISSION_GRANTED
-        status.append("• Phone State: ${if (phoneStateGranted) "✓" else "✗"}\n")
-
-        // Check contacts permission
-        val contactsGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.READ_CONTACTS
-        ) == PackageManager.PERMISSION_GRANTED
-        status.append("• Contacts: ${if (contactsGranted) "✓" else "✗"}\n")
-
-        // Check record audio permission
-        val recordAudioGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        status.append("• Record Audio: ${if (recordAudioGranted) "✓" else "✗"}\n")
-
-        // Check notification permission for Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val notificationGranted = ContextCompat.checkSelfPermission(
+        // Notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= 33) {
+            val notificationPermissionGranted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
-            status.append("• Notifications: ${if (notificationGranted) "✓" else "✗"}\n")
+            status.append("• Notifications: ${if (notificationPermissionGranted) "✓" else "✗"}\n")
         }
 
         status.append("\n")
 
         // Summary
-        if (areAllPermissionsGranted()) {
-            status.append("All permissions granted.\nService is running in the background.")
+        if (areAllCorePermissionsGranted()) {
+            status.append("All essential permissions granted.\nService is running in the background.")
             permissionsButton.text = "Permissions: All Granted"
             syncButton.isEnabled = true
             recordingButton.isEnabled = true
@@ -471,6 +484,28 @@ class MainActivity : AppCompatActivity() {
         statusText.text = status.toString()
     }
 
+    /**
+     * Get user-friendly permission name
+     */
+    private fun getReadablePermissionName(permission: String): String {
+        return when (permission) {
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION -> "Location"
+            Manifest.permission.READ_CALL_LOG -> "Call Log"
+            Manifest.permission.READ_SMS -> "SMS"
+            Manifest.permission.READ_PHONE_STATE -> "Phone State"
+            Manifest.permission.READ_CONTACTS -> "Contacts"
+            Manifest.permission.RECEIVE_SMS -> "Receive SMS"
+            Manifest.permission.RECORD_AUDIO -> "Microphone"
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION -> "Background Location"
+            Manifest.permission.POST_NOTIFICATIONS -> "Notifications"
+            else -> permission.substring(permission.lastIndexOf('.') + 1)
+        }
+    }
+
+    /**
+     * Update recording button state based on service status
+     */
     private fun updateRecordingButtonState() {
         val isRecording = DataSyncManager.isRecordingServiceRunning()
         if (isRecording) {
@@ -482,6 +517,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Update data collection status UI
+     */
     private fun updateDataCollectionStatus() {
         CoroutineScope(Dispatchers.Main).launch {
             try {
@@ -535,27 +573,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Start all background services
+     */
     private fun startBackgroundServices() {
-        // Only start if all permissions are granted
-        if (areAllPermissionsGranted()) {
+        // Only start if core permissions are granted
+        if (areAllCorePermissionsGranted()) {
             Log.d(TAG, "Starting background services")
 
             // Initialize the DataSyncManager with all services
             DataSyncManager.initialize(applicationContext)
-
-            // Start location monitoring service
-            try {
-                Log.d(TAG, "Starting location monitoring service")
-                val locationIntent = Intent(this, LocationMonitoringService::class.java)
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(locationIntent)
-                } else {
-                    startService(locationIntent)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start location service", e)
-            }
 
             // Update all widgets
             updateWidgets()
@@ -585,67 +612,6 @@ class MainActivity : AppCompatActivity() {
                 component = ComponentName(applicationContext, HomeGuardianWidget::class.java)
             }
             sendBroadcast(updateIntent)
-        }
-    }
-
-    private fun checkAndExtractModels() {
-        lifecycleScope.launch {
-            val transcriptionManager = TranscriptionManager.getInstance(applicationContext)
-
-            // Check if English model is downloaded
-            if (!transcriptionManager.isModelDownloaded("en")) {
-                // Show an info dialog
-                withContext(Dispatchers.Main) {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Language Models")
-                        .setMessage("Home Guardian needs to download language models for transcription. The English model (about 40MB) is recommended for transcribing English speech. Would you like to download it now over Wi-Fi?")
-                        .setPositiveButton("Download") { _, _ ->
-                            downloadEnglishModel()
-                        }
-                        .setNegativeButton("Later") { _, _ ->
-                            Toast.makeText(
-                                this@MainActivity,
-                                "You can download models in Settings later",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        .show()
-                }
-            }
-        }
-    }
-
-    private fun downloadEnglishModel() {
-        val progressDialog = AlertDialog.Builder(this)
-            .setTitle("Downloading English Model")
-            .setView(R.layout.dialog_download_progress)
-            .setCancelable(false)
-            .create()
-
-        progressDialog.show()
-
-        lifecycleScope.launch {
-            val transcriptionManager = TranscriptionManager.getInstance(applicationContext)
-
-            val success = withContext(Dispatchers.IO) {
-                transcriptionManager.downloadModelSync("en")
-            }
-
-            progressDialog.dismiss()
-
-            if (success) {
-                Toast.makeText(
-                    this@MainActivity,
-                    "English model downloaded successfully",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Failed to download English model",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
         }
     }
 }

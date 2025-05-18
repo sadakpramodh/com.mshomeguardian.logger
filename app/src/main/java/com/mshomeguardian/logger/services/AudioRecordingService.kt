@@ -68,15 +68,20 @@ class AudioRecordingService : Service() {
         private const val RETRY_DELAY_MS = 5000L  // 5 seconds
         private const val MAX_RETRY_COUNT = 10
 
-        // Actions
+        // Actions - these need to be public for DataSyncManager to access
         const val ACTION_START_RECORDING = "com.mshomeguardian.logger.ACTION_START_RECORDING"
         const val ACTION_STOP_RECORDING = "com.mshomeguardian.logger.ACTION_STOP_RECORDING"
         const val ACTION_SAVE_CURRENT_RECORDING = "com.mshomeguardian.logger.ACTION_SAVE_CURRENT_RECORDING"
+
+        // Flag to track service running state - needed for DataSyncManager.isRecordingServiceRunning()
+        @Volatile
+        private var isServiceRunning = false
+
+        fun isRunning(): Boolean = isServiceRunning
     }
 
     // Service state
     private val isRecording = AtomicBoolean(false)
-    private val isServiceRunning = AtomicBoolean(false)
     private var recordingJob: Job? = null
     private var hourlyProcessingJob: Job? = null
     private var audioRecord: AudioRecord? = null
@@ -108,6 +113,9 @@ class AudioRecordingService : Service() {
         Log.d(TAG, "Service onCreate")
 
         try {
+            // Create notification channel for Android 8.0+
+            createNotificationChannel()
+
             db = AppDatabase.getInstance(applicationContext)
             deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
 
@@ -128,7 +136,7 @@ class AudioRecordingService : Service() {
         try {
             when (intent?.action) {
                 ACTION_START_RECORDING -> {
-                    if (!isServiceRunning.get()) {
+                    if (!isServiceRunning) {
                         // Start as foreground service with notification
                         val notification = createNotification("Recording in progress")
                         startForeground(NOTIFICATION_ID, notification)
@@ -137,7 +145,7 @@ class AudioRecordingService : Service() {
                         acquireWakeLock()
 
                         // Start recording process
-                        isServiceRunning.set(true)
+                        isServiceRunning = true
                         startRecording()
                         startHourlyProcessing()
 
@@ -169,7 +177,7 @@ class AudioRecordingService : Service() {
             stopRecording()
             stopHourlyProcessing()
             releaseWakeLock()
-            isServiceRunning.set(false)
+            isServiceRunning = false
         } catch (e: Exception) {
             Log.e(TAG, "Error in onDestroy", e)
         }
@@ -181,8 +189,6 @@ class AudioRecordingService : Service() {
     }
 
     private fun createNotification(message: String): Notification {
-        createNotificationChannel()
-
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, notificationIntent,
@@ -256,7 +262,7 @@ class AudioRecordingService : Service() {
                     return@launch
                 }
 
-                while (isServiceRunning.get()) {
+                while (isServiceRunning) {
                     try {
                         initializeAudioRecord()
                         recordAudio()
@@ -346,7 +352,7 @@ class AudioRecordingService : Service() {
             Log.d(TAG, "Started recording with buffer size: $bufferSize")
 
             // Main recording loop
-            while (isRecording.get() && isServiceRunning.get()) {
+            while (isRecording.get() && isServiceRunning) {
                 val readResult = audioRecord.read(audioBuffer, 0, audioBuffer.size)
 
                 if (readResult > 0) {
@@ -403,7 +409,7 @@ class AudioRecordingService : Service() {
         microphoneContentionTimer = Timer().apply {
             schedule(object : TimerTask() {
                 override fun run() {
-                    if (isServiceRunning.get() && !isRecording.get()) {
+                    if (isServiceRunning && !isRecording.get()) {
                         // If service is still running but recording stopped due to contention
                         Log.d(TAG, "Attempting to restart recording after microphone contention")
                         releaseAudioRecord()
@@ -450,7 +456,7 @@ class AudioRecordingService : Service() {
 
     private fun startHourlyProcessing() {
         hourlyProcessingJob = serviceScope.launch {
-            while (isServiceRunning.get()) {
+            while (isServiceRunning) {
                 try {
                     // Wait for 1 hour (or a custom interval for testing)
                     delay(HOUR_IN_MILLIS)
@@ -686,48 +692,14 @@ class AudioRecordingService : Service() {
 
     private fun getRecordingsDirectory(): File? {
         try {
-            // Check if external storage is available
-            if (Environment.getExternalStorageState() != Environment.MEDIA_MOUNTED) {
-                Log.e(TAG, "External storage is not available")
-                return null
+            // On Android 8+, use app-specific external storage
+            val storageDir = applicationContext.getExternalFilesDir("audio_recordings")
+
+            if (storageDir != null && (!storageDir.exists() || !storageDir.isDirectory)) {
+                storageDir.mkdirs()
             }
 
-            // Try different approaches to create storage directory
-            val storageOptions = listOf(
-                // Option 1: App-specific external storage (preferred)
-                File(applicationContext.getExternalFilesDir(null), "audio_recordings"),
-
-                // Option 2: Shared media directory
-                File(Environment.getExternalStorageDirectory(),
-                    "Android/media/com.mshomeguardian.logger/audio_recordings"),
-
-                // Option 3: Internal app storage
-                File(applicationContext.filesDir, "audio_recordings")
-            )
-
-            // Try each option until one succeeds
-            for (dir in storageOptions) {
-                if (!dir.exists() && !dir.mkdirs()) {
-                    Log.w(TAG, "Could not create directory: ${dir.absolutePath}")
-                    continue
-                }
-
-                // Test if directory is writable
-                val testFile = File(dir, ".test")
-                try {
-                    if (testFile.createNewFile()) {
-                        testFile.delete()
-                        Log.d(TAG, "Using recordings directory: ${dir.absolutePath}")
-                        return dir
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Directory not writable: ${dir.absolutePath}", e)
-                }
-            }
-
-            // If all options failed, return null
-            Log.e(TAG, "Could not create any recordings directory")
-            return null
+            return storageDir
         } catch (e: Exception) {
             Log.e(TAG, "Error getting recordings directory", e)
             return null

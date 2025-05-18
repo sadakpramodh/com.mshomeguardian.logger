@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -26,6 +27,7 @@ import com.google.firebase.firestore.SetOptions
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.LocationEntity
+import com.mshomeguardian.logger.ui.MainActivity
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +37,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Service that monitors location changes and updates when a significant change occurs
+ * Updated for Android 8+ compatibility
  */
 class LocationMonitoringService : Service() {
 
@@ -82,12 +85,14 @@ class LocationMonitoringService : Service() {
         // Create the location callback
         createLocationCallback()
 
-        // Create and show the notification
+        // Create notification channel for Android 8.0+
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Always start as a foreground service for Android 8.0+
+        startForeground(NOTIFICATION_ID, createNotification())
+
         // Start location updates
         startLocationUpdates()
 
@@ -198,15 +203,24 @@ class LocationMonitoringService : Service() {
             return
         }
 
-        // Create the location request with higher accuracy
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY, // Changed to high accuracy
-            LOCATION_UPDATE_INTERVAL
-        )
-            .setMinUpdateIntervalMillis(FASTEST_LOCATION_INTERVAL)
-            .setMinUpdateDistanceMeters(DISTANCE_THRESHOLD_METERS) // Add minimum distance
-            .setWaitForAccurateLocation(true) // Wait for accurate location
-            .build()
+        // Create the location request with higher accuracy for Android 8+
+        val locationRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // For Android 12 and above, use the new Builder constructor
+            LocationRequest.Builder(LOCATION_UPDATE_INTERVAL)
+                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                .setMinUpdateIntervalMillis(FASTEST_LOCATION_INTERVAL)
+                .setMinUpdateDistanceMeters(DISTANCE_THRESHOLD_METERS)
+                .setWaitForAccurateLocation(true)
+                .build()
+        } else {
+            // For Android 8-11, use the older style builder
+            LocationRequest.create().apply {
+                interval = LOCATION_UPDATE_INTERVAL
+                fastestInterval = FASTEST_LOCATION_INTERVAL
+                priority = Priority.PRIORITY_HIGH_ACCURACY
+                smallestDisplacement = DISTANCE_THRESHOLD_METERS
+            }
+        }
 
         try {
             fusedLocationClient.requestLocationUpdates(
@@ -214,7 +228,7 @@ class LocationMonitoringService : Service() {
                 locationCallback,
                 Looper.getMainLooper()
             )
-            Log.d(TAG, "Location updates started with 1m threshold")
+            Log.d(TAG, "Location updates started with ${DISTANCE_THRESHOLD_METERS}m threshold")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start location updates", e)
             stopSelf()
@@ -246,11 +260,21 @@ class LocationMonitoringService : Service() {
     }
 
     private fun createNotification(): Notification {
+        // Create a pending intent to launch the app when notification is tapped
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Home Guardian")
             .setContentText("Monitoring your location for security")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
     }
