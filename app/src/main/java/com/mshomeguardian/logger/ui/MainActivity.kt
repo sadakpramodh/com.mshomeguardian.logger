@@ -210,11 +210,9 @@ class MainActivity : AppCompatActivity() {
         updateHandler.removeCallbacks(updateRunnable)
     }
 
-
     override fun onDestroy() {
         super.onDestroy()
-        // Release transcription resources
-        liveTranscriptionManager.release()
+        // No need to release transcription resources as there's no liveTranscriptionManager initialized
     }
 
     private fun requestAllPermissions() {
