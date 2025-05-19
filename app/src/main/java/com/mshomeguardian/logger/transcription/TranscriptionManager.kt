@@ -20,6 +20,9 @@ import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
+/**
+ * Result data class for transcription operations
+ */
 data class TranscriptionResult(
     val text: String,
     val languageCode: String,
@@ -27,6 +30,10 @@ data class TranscriptionResult(
     val durationMs: Long
 )
 
+/**
+ * Enhanced TranscriptionManager with support for multiple languages
+ * and real-time transcription capabilities
+ */
 class TranscriptionManager(private val context: Context) {
     companion object {
         private const val TAG = "TranscriptionManager"
@@ -78,12 +85,15 @@ class TranscriptionManager(private val context: Context) {
         }
     }
 
-    // Directory where models are stored
+    // Directory where downloaded models would be stored
     private val modelsDir = File(context.getExternalFilesDir(null), "vosk_models")
 
+    // Flag to check if we're using assets or external files
+    private val useAssetsModels = true
+
     init {
-        // Create models directory if it doesn't exist
-        if (!modelsDir.exists()) {
+        // Only create external directory if we're not using assets
+        if (!useAssetsModels && !modelsDir.exists()) {
             modelsDir.mkdirs()
         }
     }
@@ -93,24 +103,101 @@ class TranscriptionManager(private val context: Context) {
      */
     fun isModelDownloaded(languageCode: String): Boolean {
         val modelInfo = LANGUAGE_MODELS[languageCode] ?: return false
-        val modelDir = File(modelsDir, modelInfo.dirName)
-        return modelDir.exists() && modelDir.isDirectory &&
-                File(modelDir, "am").exists() && // Check for key files
-                File(modelDir, "conf").exists() &&
-                File(modelDir, "graph").exists() &&
-                File(modelDir, "mfcc.conf").exists()
-    }
 
+        if (useAssetsModels) {
+            // Check if model exists in assets
+            try {
+                val assetsList = context.assets.list("model-$languageCode")
+                return assetsList != null && assetsList.isNotEmpty() &&
+                        assetsList.contains("am") &&
+                        assetsList.contains("conf") &&
+                        assetsList.contains("graph") &&
+                        assetsList.contains("mfcc.conf")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking assets for model: $languageCode", e)
+                return false
+            }
+        } else {
+            // Check in external storage as before
+            val modelDir = File(modelsDir, modelInfo.dirName)
+            return modelDir.exists() && modelDir.isDirectory &&
+                    File(modelDir, "am").exists() &&
+                    File(modelDir, "conf").exists() &&
+                    File(modelDir, "graph").exists() &&
+                    File(modelDir, "mfcc.conf").exists()
+        }
+    }
     /**
      * Get the directory where the model for the specified language is stored
      */
     fun getModelDirectory(languageCode: String): File? {
         if (!isModelDownloaded(languageCode)) return null
-
         val modelInfo = LANGUAGE_MODELS[languageCode] ?: return null
-        return File(modelsDir, modelInfo.dirName)
+
+        if (useAssetsModels) {
+            // For assets, we need to copy to a temporary directory that Vosk can access
+            try {
+                val tempDir = File(context.cacheDir, "model-$languageCode")
+                if (!tempDir.exists()) {
+                    tempDir.mkdirs()
+
+                    // Copy files from assets to temp dir
+                    copyAssetFolder(context.assets, "model-$languageCode", tempDir.absolutePath)
+                }
+                return tempDir
+            } catch (e: Exception) {
+                Log.e(TAG, "Error preparing model from assets: $languageCode", e)
+                return null
+            }
+        } else {
+            // Return external storage path as before
+            return File(modelsDir, modelInfo.dirName)
+        }
     }
 
+    // Helper method to copy assets folder to a directory
+    private fun copyAssetFolder(assets: android.content.res.AssetManager,
+                                srcFolder: String, destPath: String): Boolean {
+        try {
+            val files = assets.list(srcFolder)
+            if (files?.isEmpty() == true) return false
+
+            File(destPath).mkdirs()
+
+            var success = true
+            files?.forEach { file ->
+                val srcPath = if (srcFolder.isEmpty()) file else "$srcFolder/$file"
+                val destFilePath = "$destPath/$file"
+
+                if (assets.list(srcPath)?.isEmpty() == false) {
+                    // If it's a folder, recurse
+                    success = success && copyAssetFolder(assets, srcPath, destFilePath)
+                } else {
+                    // It's a file, copy it
+                    success = success && copyAssetFile(assets, srcPath, destFilePath)
+                }
+            }
+            return success
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copying asset folder", e)
+            return false
+        }
+    }
+
+    private fun copyAssetFile(assets: android.content.res.AssetManager,
+                              srcFile: String, destFile: String): Boolean {
+        try {
+            assets.open(srcFile).use { input ->
+                File(destFile).outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copying asset file: $srcFile", e)
+            return false
+        }
+    }
     /**
      * Get the list of available language models
      */
@@ -190,11 +277,16 @@ class TranscriptionManager(private val context: Context) {
         // Download the zip file
         val zipFile = File(tempDir, "${modelInfo.dirName}.zip")
         try {
+            Log.d(TAG, "Starting download of model for language: $languageCode")
+            Log.d(TAG, "Downloading from URL: ${modelInfo.url}")
+
             URL(modelInfo.url).openStream().use { input ->
                 FileOutputStream(zipFile).use { output ->
                     input.copyTo(output)
                 }
             }
+
+            Log.d(TAG, "Download completed, extracting zip file")
 
             // Extract the zip file
             val modelDir = File(modelsDir, modelInfo.dirName)
@@ -272,7 +364,6 @@ class TranscriptionManager(private val context: Context) {
             null
         }
     }
-
     /**
      * Delete a model to free up space
      */
@@ -289,8 +380,43 @@ class TranscriptionManager(private val context: Context) {
             false
         }
     }
+
+    /**
+     * Get model size (for checking storage requirements)
+     */
+    fun getModelSize(languageCode: String): Long {
+        if (!isModelDownloaded(languageCode)) return 0
+
+        val modelInfo = LANGUAGE_MODELS[languageCode] ?: return 0
+        val modelDir = File(modelsDir, modelInfo.dirName)
+
+        return calculateDirSize(modelDir)
+    }
+
+    /**
+     * Calculate the size of a directory recursively
+     */
+    private fun calculateDirSize(dir: File): Long {
+        if (!dir.exists()) return 0
+
+        var size: Long = 0
+        val files = dir.listFiles() ?: return 0
+
+        for (file in files) {
+            size += if (file.isDirectory) {
+                calculateDirSize(file)
+            } else {
+                file.length()
+            }
+        }
+
+        return size
+    }
 }
 
+/**
+ * Model information for language models
+ */
 data class ModelInfo(
     val url: String,
     val dirName: String,
@@ -298,4 +424,3 @@ data class ModelInfo(
     val isDownloaded: Boolean = false,
     val languageCode: String = ""
 )
-

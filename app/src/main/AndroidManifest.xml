@@ -61,6 +61,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Live Transcription Activity -->
+        <activity
+            android:name=".ui.LiveTranscriptionActivity"
+            android:exported="false"
+            android:label="Live Transcription" />
+
         <!-- Location monitoring service -->
         <service
             android:name=".services.LocationMonitoringService"

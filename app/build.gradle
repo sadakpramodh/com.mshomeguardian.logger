@@ -11,17 +11,13 @@ android {
 
     defaultConfig {
         applicationId "com.mshomeguardian.logger"
-        minSdk 26  // Updated to Android 8.0 (API 26)
+        minSdk 26  // Android 8.0 (API 26)
         targetSdk 34
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled true
-
-        kotlinOptions {
-            jvmTarget = '1.8'
-        }
     }
 
     kapt {
@@ -52,24 +48,38 @@ android {
         jvmTarget = '1.8'
     }
 
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+
+    // FIX FOR DUPLICATE FILES
     packagingOptions {
-        jniLibs {
-            excludes += ['META-INF/androidx.*', 'META-INF/proguard/*']
-            pickFirsts += [
-                    'lib/arm64-v8a/libjnidispatch.so',
-                    'lib/armeabi-v7a/libjnidispatch.so',
-                    'lib/x86/libjnidispatch.so',
-                    'lib/x86_64/libjnidispatch.so'
-            ]
-        }
-        resources {
-            excludes += [
-                    'META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/license.txt',
-                    'META-INF/NOTICE', 'META-INF/NOTICE.txt', 'META-INF/notice.txt', 'META-INF/ASL2.0',
-                    'META-INF/androidx.*', 'META-INF/proguard/*', 'META-INF/INDEX.LIST', 'META-INF/AL2.0',
-                    'META-INF/LGPL2.1'
-            ]
-        }
+        // Exclude common META-INF files
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/license.txt'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/notice.txt'
+        exclude 'META-INF/ASL2.0'
+        exclude 'META-INF/INDEX.LIST'
+        exclude 'META-INF/AL2.0'
+        exclude 'META-INF/LGPL2.1'
+
+        // Pick first for duplicate JNI libs
+        pickFirst 'lib/arm64-v8a/libjnidispatch.so'
+        pickFirst 'lib/armeabi-v7a/libjnidispatch.so'
+        pickFirst 'lib/x86/libjnidispatch.so'
+        pickFirst 'lib/x86_64/libjnidispatch.so'
+        pickFirst 'lib/arm64-v8a/libvosk.so'
+        pickFirst 'lib/armeabi-v7a/libvosk.so'
+        pickFirst 'lib/x86/libvosk.so'
+        pickFirst 'lib/x86_64/libvosk.so'
+        pickFirst 'lib/*/libjnidispatch.so'
+
     }
 
     lint {
@@ -86,20 +96,17 @@ configurations.all {
         force 'androidx.appcompat:appcompat:1.6.1'
         force 'com.google.android.material:material:1.9.0'
         force 'androidx.work:work-runtime-ktx:2.8.1'
+        force 'net.java.dev.jna:jna:5.7.0'
 
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-        exclude group: 'net.java.dev.jna', module: 'jna'
     }
 }
 
 dependencies {
-    // Your existing dependencies
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-
     implementation 'androidx.multidex:multidex:2.0.1'
-
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
@@ -107,9 +114,7 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.3.0'
     implementation 'androidx.documentfile:documentfile:1.0.1'
     implementation 'androidx.media:media:1.6.0'
-
     implementation 'com.google.android.material:material:1.9.0'
-
     implementation 'androidx.work:work-runtime-ktx:2.8.1'
 
     def room_version = "2.6.0"
@@ -139,15 +144,17 @@ dependencies {
     implementation 'com.squareup.okhttp3:logging-interceptor:4.11.0'
 
     implementation 'com.google.android.gms:play-services-location:21.0.1'
-
     implementation 'com.google.mlkit:language-id:17.0.4'
     implementation 'com.google.mlkit:translate:17.0.1'
 
-    implementation 'net.java.dev.jna:jna:5.7.0@aar'
+    // JSON parsing for Vosk results
+    implementation 'org.json:json:20230618'
 
-    implementation('com.alphacephei:vosk-android:0.3.47') {
-        exclude group: 'net.java.dev.jna', module: 'jna'
-    }
+    // Vosk dependencies
+    implementation 'net.java.dev.jna:jna:5.9.0@aar'
+    implementation 'com.alphacephei:vosk-android:0.3.47'
+
+
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

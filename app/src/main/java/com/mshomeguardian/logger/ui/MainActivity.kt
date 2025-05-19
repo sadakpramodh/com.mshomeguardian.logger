@@ -39,7 +39,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Main activity for app configuration and status
- * Updated for Android 8+ compatibility
+ * Updated with Live Transcription feature
  */
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceIdText: TextView
     private lateinit var syncButton: Button
     private lateinit var recordingButton: Button
+    private lateinit var liveTranscriptionButton: Button  // New button for live transcription
 
     // Status text views
     private lateinit var locationStatusText: TextView
@@ -113,6 +114,7 @@ class MainActivity : AppCompatActivity() {
         deviceIdText = findViewById(R.id.deviceIdText)
         syncButton = findViewById(R.id.syncButton)
         recordingButton = findViewById(R.id.recordingButton)
+        liveTranscriptionButton = findViewById(R.id.liveTranscriptionButton)  // Initialize new button
 
         // Status text views
         locationStatusText = findViewById(R.id.locationStatusText)
@@ -159,6 +161,22 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Set up live transcription button
+// In the liveTranscriptionButton click listener:
+        liveTranscriptionButton.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED) {
+                val intent = Intent(this, LiveTranscriptionActivity::class.java)
+                startActivity(intent)
+            } else {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.RECORD_AUDIO),
+                    RECORD_AUDIO_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
         // Check permissions on startup
         updatePermissionStatus()
 
@@ -171,6 +189,14 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             checkBatteryOptimizations()
         }
+    }
+
+    /**
+     * Start live transcription activity
+     */
+    private fun startLiveTranscription() {
+        val intent = Intent(this, LiveTranscriptionActivity::class.java)
+        startActivity(intent)
     }
 
     /**
@@ -313,7 +339,12 @@ class MainActivity : AppCompatActivity() {
 
             RECORD_AUDIO_PERMISSION_REQUEST_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    toggleRecordingService()
+                    // First check which button was clicked
+                    if (recordingButton.isPressed) {
+                        toggleRecordingService()
+                    } else if (liveTranscriptionButton.isPressed) {
+                        startLiveTranscription()
+                    }
                 } else {
                     Toast.makeText(this, "Audio recording permission denied", Toast.LENGTH_SHORT).show()
                 }
@@ -467,6 +498,7 @@ class MainActivity : AppCompatActivity() {
             permissionsButton.text = "Permissions: All Granted"
             syncButton.isEnabled = true
             recordingButton.isEnabled = true
+            liveTranscriptionButton.isEnabled = true
 
             // Update recording button text
             updateRecordingButtonState()
@@ -475,10 +507,12 @@ class MainActivity : AppCompatActivity() {
             permissionsButton.text = "Grant Permissions"
             syncButton.isEnabled = false
 
-            // Enable recording button if at least RECORD_AUDIO is granted
-            recordingButton.isEnabled = ContextCompat.checkSelfPermission(
+            // Enable recording and transcription buttons if at least RECORD_AUDIO is granted
+            val recordAudioGranted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
+            recordingButton.isEnabled = recordAudioGranted
+            liveTranscriptionButton.isEnabled = recordAudioGranted
         }
 
         statusText.text = status.toString()
@@ -590,6 +624,25 @@ class MainActivity : AppCompatActivity() {
             // Update UI
             updatePermissionStatus()
             Toast.makeText(this, "Home Guardian is now monitoring your device", Toast.LENGTH_SHORT).show()
+
+            // Preload TranscriptionManager and check for models
+            lifecycleScope.launch {
+                val transcriptionManager = TranscriptionManager.getInstance(applicationContext)
+                // Check if we have required models
+                val availableLanguages = withContext(Dispatchers.IO) {
+                    transcriptionManager.getAvailableLanguages()
+                }
+
+                val downloadedLanguages = availableLanguages.filter { it.isDownloaded }
+                if (downloadedLanguages.isEmpty()) {
+                    // No language models downloaded
+                    Toast.makeText(
+                        this@MainActivity,
+                        "You'll need to download language models for live transcription",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
         } else {
             Log.d(TAG, "Not all permissions granted, cannot start services")
             updatePermissionStatus()
