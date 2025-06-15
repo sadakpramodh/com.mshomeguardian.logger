@@ -20,9 +20,8 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
-import com.google.firebase.ktx.Firebase
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.storage.ktx.storage
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.AudioRecordingEntity
@@ -104,9 +103,9 @@ class AudioRecordingService : Service() {
     private lateinit var db: AppDatabase
     private lateinit var deviceId: String
 
-    // Firebase (using KTX)
-    private val firestore = try { Firebase.firestore } catch (e: Exception) { null }
-    private val storage = try { Firebase.storage } catch (e: Exception) { null }
+    // NEW
+    private val firestore = try { FirebaseFirestore.getInstance() } catch (e: Exception) { null }
+    private val storage = try { FirebaseStorage.getInstance() } catch (e: Exception) { null }
 
     override fun onCreate() {
         super.onCreate()

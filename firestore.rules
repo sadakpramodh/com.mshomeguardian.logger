@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow authenticated users to access their own device data
+    match /devices/{deviceId}/{document=**} {
+      allow read, write: if request.auth != null 
+        && resource != null 
+        && resource.data.deviceId == deviceId;
+    }
+    
+    // Allow authenticated users to create new device documents
+    match /devices/{deviceId} {
+      allow create: if request.auth != null 
+        && request.resource.data.deviceId == deviceId;
+    }
+    
+    // More specific rules for different collections under devices
+    match /devices/{deviceId}/locations/{locationId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /devices/{deviceId}/call_logs/{callId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /devices/{deviceId}/messages/{messageId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /devices/{deviceId}/contacts/{contactId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /devices/{deviceId}/audio_recordings/{recordingId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /devices/{deviceId}/weather/{weatherId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /devices/{deviceId}/phone_state/{stateId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Optional: Allow users to access multiple devices they own
+    // You could add a user collection that lists device IDs they have access to
+    match /users/{userId}/devices/{deviceId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

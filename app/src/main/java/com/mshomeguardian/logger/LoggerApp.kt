@@ -5,10 +5,9 @@ import android.content.Context
 import android.util.Log
 import androidx.multidex.MultiDex
 import com.google.firebase.FirebaseApp
-import com.google.firebase.appcheck.ktx.appCheck
+import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
-import com.google.firebase.ktx.Firebase
-import com.mshomeguardian.logger.utils.`AuthStateHandler.kt`
+import com.mshomeguardian.logger.utils.AuthStateHandler
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.WorkManagerInitializer
 
@@ -66,7 +65,7 @@ class LoggerApp : Application() {
             }
 
             // Initialize Firebase App Check for security
-            Firebase.appCheck.installAppCheckProviderFactory(
+            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
                 PlayIntegrityAppCheckProviderFactory.getInstance()
             )
             Log.d(TAG, "Firebase App Check initialized")
@@ -116,7 +115,7 @@ class LoggerApp : Application() {
             Log.d(TAG, "Initializing authentication state handler...")
 
             // Initialize authentication state handler
-            `AuthStateHandler.kt`.initialize(applicationContext)
+            AuthStateHandler.initialize(applicationContext)
 
             Log.d(TAG, "Authentication state handler initialized")
         } catch (e: Exception) {
@@ -131,7 +130,7 @@ class LoggerApp : Application() {
 
         try {
             // Clean up authentication state handler
-            `AuthStateHandler.kt`.cleanup()
+            AuthStateHandler.cleanup()
 
             Log.d(TAG, "LoggerApp cleanup completed")
         } catch (e: Exception) {
