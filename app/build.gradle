@@ -124,8 +124,10 @@ dependencies {
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-appcheck'
     implementation 'com.google.firebase:firebase-appcheck-playintegrity'
+
     // Needed for Firestore to integrate with App Check
     implementation 'com.google.firebase:firebase-appcheck-interop'
+
     implementation 'com.firebaseui:firebase-ui-auth:8.0.0'
 
     // Network
