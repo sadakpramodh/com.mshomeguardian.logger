@@ -54,7 +54,7 @@
         android:label="Home Guardian"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+        android:theme="@style/Theme.HomeGuardian"
         tools:targetApi="31">
 
         <activity

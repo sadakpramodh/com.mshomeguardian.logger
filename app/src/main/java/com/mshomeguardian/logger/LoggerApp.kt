@@ -27,11 +27,11 @@ class LoggerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-
         Log.d(TAG, "LoggerApp starting (EMERGENCY - NO APP CHECK)...")
 
         try {
             initializeFirebase()
+            initializeFirestore()  // ADD THIS LINE
             initializeDeviceIdentifier()
             initializeWorkManager()
             initializeAuthenticationHandler()
@@ -62,6 +62,30 @@ class LoggerApp : Application() {
 
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing Firebase", e)
+        }
+    }
+
+    /**
+     * Configure Firestore with offline persistence to fix connection issues
+     */
+    private fun initializeFirestore() {
+        try {
+            Log.d(TAG, "Configuring Firestore...")
+
+            val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+
+            // Configure Firestore settings for better connectivity
+            val settings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
+                .setPersistenceEnabled(true) // Enable offline persistence
+                .setCacheSizeBytes(com.google.firebase.firestore.FirebaseFirestoreSettings.CACHE_SIZE_UNLIMITED)
+                .build()
+
+            firestore.firestoreSettings = settings
+
+            Log.d(TAG, "Firestore configured with offline persistence")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error configuring Firestore", e)
+            // Don't crash the app - it can still work with limited functionality
         }
     }
 

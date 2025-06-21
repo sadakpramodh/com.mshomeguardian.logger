@@ -9,6 +9,7 @@ import kotlinx.coroutines.tasks.await
 /**
  * Helper class for Firebase operations with new structure:
  * Root -> users/{email} -> devices/{deviceId} -> {collections}
+ * Enhanced with better error handling for Firestore connection issues
  */
 object FirebaseServiceHelper {
     private const val TAG = "FirebaseServiceHelper"
@@ -28,6 +29,36 @@ object FirebaseServiceHelper {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Firebase Storage", e)
             null
+        }
+    }
+
+    /**
+     * Safe execution wrapper that handles Firestore connection errors gracefully
+     */
+    private suspend fun <T> safeFirestoreOperation(
+        operation: suspend () -> T,
+        operationName: String,
+        defaultValue: T
+    ): T {
+        return try {
+            operation()
+        } catch (e: Exception) {
+            // Handle expected Firestore connection issues gracefully
+            when {
+                e.message?.contains("UNAVAILABLE") == true -> {
+                    Log.d(TAG, "$operationName temporarily unavailable - will retry automatically")
+                }
+                e.message?.contains("Stream closed") == true -> {
+                    Log.d(TAG, "$operationName stream closed - Firestore will reconnect")
+                }
+                e.message?.contains("permission", ignoreCase = true) == true -> {
+                    Log.w(TAG, "$operationName permission denied - check security rules")
+                }
+                else -> {
+                    Log.w(TAG, "$operationName failed: ${e.message}")
+                }
+            }
+            defaultValue
         }
     }
 
@@ -67,23 +98,24 @@ object FirebaseServiceHelper {
         deviceId: String,
         locationData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val timestamp = locationData["timestamp"] as? Long ?: System.currentTimeMillis()
-            val collectionPath = getCollectionPath(userEmail, deviceId, "locations")
+                val timestamp = locationData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "locations")
 
-            firestoreInstance.collection(collectionPath)
-                .document(timestamp.toString())
-                .set(locationData, SetOptions.merge())
-                .await()
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(locationData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Location uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading location for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Location uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload location",
+            defaultValue = false
+        )
     }
 
     /**
@@ -94,23 +126,24 @@ object FirebaseServiceHelper {
         deviceId: String,
         callLogData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val callId = callLogData["callId"] as? String ?: return false
-            val collectionPath = getCollectionPath(userEmail, deviceId, "call_logs")
+                val callId = callLogData["callId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "call_logs")
 
-            firestoreInstance.collection(collectionPath)
-                .document(callId)
-                .set(callLogData, SetOptions.merge())
-                .await()
+                firestoreInstance.collection(collectionPath)
+                    .document(callId)
+                    .set(callLogData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Call log uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading call log for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Call log uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload call log",
+            defaultValue = false
+        )
     }
 
     /**
@@ -121,23 +154,24 @@ object FirebaseServiceHelper {
         deviceId: String,
         messageData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val messageId = messageData["messageId"] as? String ?: return false
-            val collectionPath = getCollectionPath(userEmail, deviceId, "messages")
+                val messageId = messageData["messageId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "messages")
 
-            firestoreInstance.collection(collectionPath)
-                .document(messageId)
-                .set(messageData, SetOptions.merge())
-                .await()
+                firestoreInstance.collection(collectionPath)
+                    .document(messageId)
+                    .set(messageData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Message uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading message for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Message uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload message",
+            defaultValue = false
+        )
     }
 
     /**
@@ -148,23 +182,24 @@ object FirebaseServiceHelper {
         deviceId: String,
         contactData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val contactId = contactData["contactId"] as? String ?: return false
-            val collectionPath = getCollectionPath(userEmail, deviceId, "contacts")
+                val contactId = contactData["contactId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "contacts")
 
-            firestoreInstance.collection(collectionPath)
-                .document(contactId)
-                .set(contactData, SetOptions.merge())
-                .await()
+                firestoreInstance.collection(collectionPath)
+                    .document(contactId)
+                    .set(contactData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Contact uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading contact for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Contact uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload contact",
+            defaultValue = false
+        )
     }
 
     /**
@@ -175,21 +210,22 @@ object FirebaseServiceHelper {
         deviceId: String,
         deviceData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
 
-            firestoreInstance.document(deviceDocPath)
-                .set(deviceData, SetOptions.merge())
-                .await()
+                firestoreInstance.document(deviceDocPath)
+                    .set(deviceData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Device info uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading device info for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Device info uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload device info",
+            defaultValue = false
+        )
     }
 
     /**
@@ -200,23 +236,24 @@ object FirebaseServiceHelper {
         deviceId: String,
         recordingData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val recordingId = recordingData["recordingId"] as? String ?: return false
-            val collectionPath = getCollectionPath(userEmail, deviceId, "audio_recordings")
+                val recordingId = recordingData["recordingId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "audio_recordings")
 
-            firestoreInstance.collection(collectionPath)
-                .document(recordingId)
-                .set(recordingData, SetOptions.merge())
-                .await()
+                firestoreInstance.collection(collectionPath)
+                    .document(recordingId)
+                    .set(recordingData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Audio recording metadata uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading audio recording metadata for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Audio recording metadata uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload audio recording",
+            defaultValue = false
+        )
     }
 
     /**
@@ -227,23 +264,24 @@ object FirebaseServiceHelper {
         deviceId: String,
         weatherData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val timestamp = weatherData["timestamp"] as? Long ?: System.currentTimeMillis()
-            val collectionPath = getCollectionPath(userEmail, deviceId, "weather")
+                val timestamp = weatherData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "weather")
 
-            firestoreInstance.collection(collectionPath)
-                .document(timestamp.toString())
-                .set(weatherData, SetOptions.merge())
-                .await()
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(weatherData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Weather data uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading weather data for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Weather data uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload weather",
+            defaultValue = false
+        )
     }
 
     /**
@@ -254,23 +292,24 @@ object FirebaseServiceHelper {
         deviceId: String,
         phoneStateData: Map<String, Any>
     ): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val timestamp = phoneStateData["timestamp"] as? Long ?: System.currentTimeMillis()
-            val collectionPath = getCollectionPath(userEmail, deviceId, "phone_state")
+                val timestamp = phoneStateData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "phone_state")
 
-            firestoreInstance.collection(collectionPath)
-                .document(timestamp.toString())
-                .set(phoneStateData, SetOptions.merge())
-                .await()
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(phoneStateData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "Phone state uploaded successfully for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error uploading phone state for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "Phone state uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload phone state",
+            defaultValue = false
+        )
     }
 
     /**
@@ -320,65 +359,67 @@ object FirebaseServiceHelper {
      * Create user account document if it doesn't exist
      */
     suspend fun initializeUserAccount(userEmail: String, deviceId: String): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val sanitizedEmail = sanitizeEmailForFirestore(userEmail)
-            val userDocPath = "users/$sanitizedEmail"
+                val sanitizedEmail = sanitizeEmailForFirestore(userEmail)
+                val userDocPath = "users/$sanitizedEmail"
 
-            // Create user document with basic info
-            val userData = mapOf(
-                "email" to userEmail,
-                "createdAt" to System.currentTimeMillis(),
-                "lastUpdated" to System.currentTimeMillis(),
-                "deviceCount" to 1
-            )
+                // Create user document with basic info
+                val userData = mapOf(
+                    "email" to userEmail,
+                    "createdAt" to System.currentTimeMillis(),
+                    "lastUpdated" to System.currentTimeMillis(),
+                    "deviceCount" to 1
+                )
 
-            firestoreInstance.document(userDocPath)
-                .set(userData, SetOptions.merge())
-                .await()
+                firestoreInstance.document(userDocPath)
+                    .set(userData, SetOptions.merge())
+                    .await()
 
-            // Initialize device document
-            val deviceData = mapOf(
-                "deviceId" to deviceId,
-                "registeredAt" to System.currentTimeMillis(),
-                "lastActive" to System.currentTimeMillis(),
-                "isActive" to true
-            )
+                // Initialize device document
+                val deviceData = mapOf(
+                    "deviceId" to deviceId,
+                    "registeredAt" to System.currentTimeMillis(),
+                    "lastActive" to System.currentTimeMillis(),
+                    "isActive" to true
+                )
 
-            val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
-            firestoreInstance.document(deviceDocPath)
-                .set(deviceData, SetOptions.merge())
-                .await()
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+                firestoreInstance.document(deviceDocPath)
+                    .set(deviceData, SetOptions.merge())
+                    .await()
 
-            Log.d(TAG, "User account initialized for $userEmail")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing user account for $userEmail", e)
-            false
-        }
+                Log.d(TAG, "User account initialized for $userEmail")
+                true
+            },
+            operationName = "Initialize user account",
+            defaultValue = false
+        )
     }
 
     /**
      * Update device last active timestamp
      */
     suspend fun updateDeviceLastActive(userEmail: String, deviceId: String): Boolean {
-        return try {
-            val firestoreInstance = firestore ?: return false
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-            val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
-            val updateData = mapOf(
-                "lastActive" to System.currentTimeMillis()
-            )
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+                val updateData = mapOf(
+                    "lastActive" to System.currentTimeMillis()
+                )
 
-            firestoreInstance.document(deviceDocPath)
-                .update(updateData)
-                .await()
+                firestoreInstance.document(deviceDocPath)
+                    .update(updateData)
+                    .await()
 
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating device last active for $userEmail", e)
-            false
-        }
+                true
+            },
+            operationName = "Update device last active",
+            defaultValue = false
+        )
     }
 }
