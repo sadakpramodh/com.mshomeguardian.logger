@@ -61,6 +61,11 @@
             </intent-filter>
         </activity>
 
+        <!-- FirebaseUI Sign-In Activity -->
+        <activity
+            android:name=".ui.SignInActivity"
+            android:exported="false" />
+
         <!-- Live Transcription Activity -->
         <activity
             android:name=".ui.LiveTranscriptionActivity"
