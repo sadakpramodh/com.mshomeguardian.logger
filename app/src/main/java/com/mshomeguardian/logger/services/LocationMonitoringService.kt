@@ -24,6 +24,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.LocationEntity
@@ -90,6 +91,12 @@ class LocationMonitoringService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!AuthManager.isSignedIn()) {
+            Log.w(TAG, "User not authenticated - stopping service")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // Always start as a foreground service for Android 8.0+
         startForeground(NOTIFICATION_ID, createNotification())
 

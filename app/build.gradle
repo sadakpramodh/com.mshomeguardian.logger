@@ -116,21 +116,20 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycle_version"
     implementation "androidx.lifecycle:lifecycle-service:$lifecycle_version"
 
-    // Firebase - ABSOLUTE MINIMUM (NO APP CHECK AT ALL)
-    implementation platform('com.google.firebase:firebase-bom:32.7.0')
+    // Firebase - NO KTX to avoid conflicts
+    // Use the latest Firebase BoM for consistent versions
+    implementation platform('com.google.firebase:firebase-bom:33.0.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-firestore'
     implementation 'com.google.firebase:firebase-storage'
     implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-appcheck'
+    implementation 'com.google.firebase:firebase-appcheck-playintegrity'
 
-    // ❌ COMPLETELY REMOVED - All App Check dependencies
-    // ❌ implementation 'com.google.firebase:firebase-appcheck'
-    // ❌ implementation 'com.google.firebase:firebase-appcheck-playintegrity'
-    // ❌ implementation 'com.google.firebase:firebase-appcheck-interop'
-    // ❌ implementation 'com.google.firebase:firebase-common'
-    // ❌ implementation 'com.google.firebase:firebase-components'
 
-    // FirebaseUI for authentication
+    // Needed for Firestore to integrate with App Check
+    implementation 'com.google.firebase:firebase-appcheck-interop'
+
     implementation 'com.firebaseui:firebase-ui-auth:8.0.0'
 
     // Network
@@ -156,15 +155,27 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
 
-// Minimal resolution strategy
+// Force resolution to avoid conflicts
 configurations.all {
     resolutionStrategy {
+        // Exclude all KTX libraries to prevent duplicates
+        exclude group: 'com.google.firebase', module: 'firebase-auth-ktx'
+        exclude group: 'com.google.firebase', module: 'firebase-firestore-ktx'
+        exclude group: 'com.google.firebase', module: 'firebase-storage-ktx'
+        exclude group: 'com.google.firebase', module: 'firebase-appcheck-ktx'
+        exclude group: 'com.google.firebase', module: 'firebase-analytics-ktx'
+        exclude group: 'com.google.firebase', module: 'firebase-common-ktx'
+
+        // Force specific versions
         force 'androidx.room:room-runtime:2.6.0'
         force 'androidx.room:room-ktx:2.6.0'
         force 'androidx.core:core-ktx:1.12.0'
         force 'androidx.appcompat:appcompat:1.6.1'
         force 'com.google.android.material:material:1.9.0'
         force 'androidx.work:work-runtime-ktx:2.8.1'
-        force 'net.java.dev.jna:jna:5.9.0'
+        force 'net.java.dev.jna:jna:5.7.0'
+
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
     }
 }
