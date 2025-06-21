@@ -17,6 +17,16 @@
             android:text="Device ID: Loading..."
             android:textSize="16sp"
             android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/accountInfoText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Account: Loading..."
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#1976D2"
             android:layout_marginBottom="16dp" />
 
         <TextView
@@ -50,7 +60,7 @@
             android:enabled="false"
             android:layout_marginBottom="16dp" />
 
-        <!-- New Live Transcription Button -->
+        <!-- Live Transcription Button -->
         <Button
             android:id="@+id/liveTranscriptionButton"
             android:layout_width="match_parent"

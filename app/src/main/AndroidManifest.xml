@@ -28,7 +28,7 @@
     <!-- For Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- For Android 14+ foreground service types -->
+    <!-- CRITICAL: For Android 14+ foreground service types -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
@@ -39,6 +39,11 @@
         android:maxSdkVersion="32" />
     <!-- For Android 13+ (READ_MEDIA_* permissions) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- Features required -->
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
         android:name=".LoggerApp"
@@ -72,33 +77,37 @@
             android:exported="false"
             android:label="Live Transcription" />
 
-        <!-- Location monitoring service -->
+        <!-- Location monitoring service with proper foreground service type -->
         <service
             android:name=".services.LocationMonitoringService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- Recording service -->
+        <!-- Recording service with proper foreground service type -->
         <service
             android:name=".services.RecordingService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- Monitoring service -->
+        <!-- Monitoring service with combined types -->
         <service
             android:name=".services.MonitoringService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="location|microphone" />
+            android:foregroundServiceType="location|microphone"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- AudioRecordingService -->
+        <!-- AudioRecordingService with proper foreground service type -->
         <service
             android:name=".services.AudioRecordingService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <!-- Home Screen Widget -->
         <receiver

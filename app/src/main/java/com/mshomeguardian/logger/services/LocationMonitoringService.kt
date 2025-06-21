@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Service that monitors location changes and updates when a significant change occurs
- * Updated for Android 8+ compatibility
+ * Updated for Android 14+ compatibility with proper permission handling
  */
 class LocationMonitoringService : Service() {
 
@@ -47,7 +47,7 @@ class LocationMonitoringService : Service() {
         private const val NOTIFICATION_ID = 12345
         private const val CHANNEL_ID = "location_monitoring_channel"
 
-        // Distance threshold for updating location (1 meter instead of 50)
+        // Distance threshold for updating location (1 meter)
         private const val DISTANCE_THRESHOLD_METERS = 1.0f
 
         // Interval for active location checks (5 minutes)
@@ -91,17 +91,37 @@ class LocationMonitoringService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Check authentication first
         if (!AuthManager.isSignedIn()) {
             Log.w(TAG, "User not authenticated - stopping service")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        // Always start as a foreground service for Android 8.0+
-        startForeground(NOTIFICATION_ID, createNotification())
+        // Check for required permissions
+        if (!hasRequiredPermissions()) {
+            Log.e(TAG, "Missing required permissions - stopping service")
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
-        // Start location updates
-        startLocationUpdates()
+        try {
+            // Start as a foreground service for Android 8.0+
+            startForeground(NOTIFICATION_ID, createNotification())
+
+            // Start location updates
+            startLocationUpdates()
+
+            Log.d(TAG, "LocationMonitoringService started successfully")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException starting foreground service", e)
+            stopSelf()
+            return START_NOT_STICKY
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting LocationMonitoringService", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // Return sticky to automatically restart the service if it gets killed
         return START_STICKY
@@ -114,6 +134,30 @@ class LocationMonitoringService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopLocationUpdates()
+        Log.d(TAG, "LocationMonitoringService destroyed")
+    }
+
+    /**
+     * Check if all required permissions are granted
+     */
+    private fun hasRequiredPermissions(): Boolean {
+        val hasLocationPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasCoarseLocationPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasForegroundServicePermission = if (Build.VERSION.SDK_INT >= 34) {
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.FOREGROUND_SERVICE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Not required on older versions
+        }
+
+        return (hasLocationPermission || hasCoarseLocationPermission) && hasForegroundServicePermission
     }
 
     private fun createLocationCallback() {
@@ -179,33 +223,47 @@ class LocationMonitoringService : Service() {
     }
 
     private fun uploadLocationToFirebase(locationEntity: LocationEntity) {
-        // Skip if Firestore is not initialized
-        val firestoreInstance = firestore ?: return
+        // Skip if not authenticated or Firebase not available
+        val userEmail = AuthManager.getCurrentUser()?.email
+        if (userEmail == null || !FirebaseServiceHelper.isFirebaseAvailable()) {
+            Log.w(TAG, "Cannot upload to Firebase - user not authenticated or Firebase unavailable")
+            return
+        }
 
         try {
-            firestoreInstance.collection("devices")
-                .document(deviceId)
-                .collection("locations")
-                .document(locationEntity.timestamp.toString())
-                .set(locationEntity, SetOptions.merge())
-                .addOnSuccessListener {
-                    Log.d(TAG, "Location uploaded to Firestore")
+            // Use the new Firebase structure with email-based paths
+            serviceScope.launch {
+                try {
+                    val locationData = mapOf(
+                        "timestamp" to locationEntity.timestamp,
+                        "latitude" to locationEntity.latitude,
+                        "longitude" to locationEntity.longitude,
+                        "deviceId" to deviceId,
+                        "syncedAt" to System.currentTimeMillis()
+                    )
+
+                    val success = FirebaseServiceHelper.uploadLocation(userEmail, deviceId, locationData)
+
+                    if (success) {
+                        Log.d(TAG, "Location uploaded to Firebase with new structure")
+                        // Update device last active timestamp
+                        FirebaseServiceHelper.updateDeviceLastActive(userEmail, deviceId)
+                    } else {
+                        Log.w(TAG, "Failed to upload location to Firebase")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error uploading location to Firebase", e)
                 }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "Firestore upload failed", e)
-                }
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error uploading to Firestore", e)
+            Log.e(TAG, "Error in uploadLocationToFirebase", e)
         }
     }
 
     private fun startLocationUpdates() {
-        // Check if we have the necessary permissions
-        if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED) {
-            Log.e(TAG, "Location permission not granted")
+        // Double-check permissions before starting
+        if (!hasRequiredPermissions()) {
+            Log.e(TAG, "Cannot start location updates - missing permissions")
             stopSelf()
             return
         }
@@ -236,6 +294,9 @@ class LocationMonitoringService : Service() {
                 Looper.getMainLooper()
             )
             Log.d(TAG, "Location updates started with ${DISTANCE_THRESHOLD_METERS}m threshold")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException starting location updates", e)
+            stopSelf()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start location updates", e)
             stopSelf()
@@ -283,6 +344,7 @@ class LocationMonitoringService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 }

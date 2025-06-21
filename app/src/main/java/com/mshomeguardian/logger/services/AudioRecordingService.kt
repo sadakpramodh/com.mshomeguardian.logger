@@ -10,16 +10,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
-import android.os.Environment
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import com.mshomeguardian.logger.R
@@ -49,6 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Service for continuous audio recording with automatic scheduling
+ * Updated for Android 14+ permission requirements
  */
 class AudioRecordingService : Service() {
     companion object {
@@ -96,14 +96,13 @@ class AudioRecordingService : Service() {
 
     // Microphone contention management
     private var retryCount = 0
-    private var audioManager: AudioManager? = null
     private var microphoneContentionTimer: Timer? = null
 
     // Database and device info
     private lateinit var db: AppDatabase
     private lateinit var deviceId: String
 
-    // NEW
+    // Firebase instances
     private val firestore = try { FirebaseFirestore.getInstance() } catch (e: Exception) { null }
     private val storage = try { FirebaseStorage.getInstance() } catch (e: Exception) { null }
 
@@ -118,8 +117,6 @@ class AudioRecordingService : Service() {
             db = AppDatabase.getInstance(applicationContext)
             deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
 
-            audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
             // Ensure recordings directory exists
             createRecordingsDirectory()
 
@@ -133,6 +130,13 @@ class AudioRecordingService : Service() {
         Log.d(TAG, "onStartCommand: ${intent?.action}")
 
         try {
+            // Check for required permissions before starting
+            if (!hasRequiredPermissions()) {
+                Log.e(TAG, "Missing required permissions - stopping service")
+                stopSelf()
+                return START_NOT_STICKY
+            }
+
             when (intent?.action) {
                 ACTION_START_RECORDING -> {
                     if (!isServiceRunning) {
@@ -162,12 +166,37 @@ class AudioRecordingService : Service() {
                     }
                 }
             }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException in onStartCommand", e)
+            stopSelf()
+            return START_NOT_STICKY
         } catch (e: Exception) {
             Log.e(TAG, "Error in onStartCommand", e)
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         // If service is killed, restart it
         return START_STICKY
+    }
+
+    /**
+     * Check if all required permissions are granted for Android 14+
+     */
+    private fun hasRequiredPermissions(): Boolean {
+        val hasRecordAudio = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasForegroundServiceMicrophone = if (Build.VERSION.SDK_INT >= 34) {
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.FOREGROUND_SERVICE_MICROPHONE
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Not required on older versions
+        }
+
+        return hasRecordAudio && hasForegroundServiceMicrophone
     }
 
     override fun onDestroy() {
@@ -200,6 +229,7 @@ class AudioRecordingService : Service() {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 

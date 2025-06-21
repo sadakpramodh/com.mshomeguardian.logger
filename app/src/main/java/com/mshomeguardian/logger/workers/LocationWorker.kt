@@ -5,11 +5,11 @@ import android.location.Location
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.LocationEntity
+import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.LocationUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,13 +23,6 @@ class LocationWorker(
     private val db = AppDatabase.getInstance(context)
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
-    private val firestore: FirebaseFirestore? = try {
-        FirebaseFirestore.getInstance()
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firestore", e)
-        null
-    }
-
     companion object {
         private const val TAG = "LocationWorker"
         private const val MAX_RETRIES = 3
@@ -38,6 +31,19 @@ class LocationWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
+            // Check if user is authenticated
+            val userEmail = AuthManager.getCurrentUser()?.email
+            if (userEmail == null) {
+                Log.w(TAG, "User not authenticated, skipping location sync")
+                return@withContext Result.success()
+            }
+
+            // Check if Firebase is available
+            if (!FirebaseServiceHelper.isFirebaseAvailable()) {
+                Log.w(TAG, "Firebase not available, saving locally only")
+                return@withContext handleLocationWithoutFirebase()
+            }
+
             val loc: Location? = LocationUtils.getLastKnownLocation(applicationContext)
 
             if (loc != null) {
@@ -58,31 +64,39 @@ class LocationWorker(
                     // Continue even if local save fails
                 }
 
-                // Try to upload to Firestore if available
-                val firestoreInstance = firestore
-                if (firestoreInstance != null) {
-                    try {
-                        firestoreInstance.collection("devices")
-                            .document(deviceId)
-                            .collection("locations")
-                            .document(ts.toString())
-                            .set(entity, SetOptions.merge())
-                            .addOnSuccessListener {
-                                Log.d(TAG, "Location uploaded to Firestore")
+                // Upload to Firebase with new structure
+                try {
+                    val locationData = mapOf(
+                        "timestamp" to ts,
+                        "latitude" to loc.latitude,
+                        "longitude" to loc.longitude,
+                        "accuracy" to loc.accuracy.toDouble(),
+                        "altitude" to loc.altitude,
+                        "bearing" to loc.bearing.toDouble(),
+                        "speed" to loc.speed.toDouble(),
+                        "deviceId" to deviceId,
+                        "provider" to (loc.provider ?: "unknown"),
+                        "syncedAt" to System.currentTimeMillis()
+                    )
 
-                                // Save last sync time to SharedPreferences
-                                val prefs = applicationContext.getSharedPreferences(
-                                    "location_sync", Context.MODE_PRIVATE)
-                                prefs.edit().putLong("last_sync_time", ts).apply()
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e(TAG, "Firestore upload failed", e)
-                            }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error uploading to Firestore", e)
+                    val success = FirebaseServiceHelper.uploadLocation(userEmail, deviceId, locationData)
+
+                    if (success) {
+                        Log.d(TAG, "Location uploaded to Firebase successfully")
+
+                        // Update device last active
+                        FirebaseServiceHelper.updateDeviceLastActive(userEmail, deviceId)
+
+                        // Save last sync time to SharedPreferences
+                        val prefs = applicationContext.getSharedPreferences(
+                            "location_sync", Context.MODE_PRIVATE)
+                        prefs.edit().putLong("last_sync_time", ts).apply()
+                    } else {
+                        Log.w(TAG, "Failed to upload location to Firebase")
                     }
-                } else {
-                    Log.w(TAG, "Firestore not configured, skipping upload")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error uploading to Firebase", e)
+                    // Don't fail the worker if Firebase upload fails
                 }
 
                 Result.success()
@@ -107,6 +121,37 @@ class LocationWorker(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Unhandled error in worker", e)
+            Result.retry()
+        }
+    }
+
+    /**
+     * Handle location capture when Firebase is not available
+     */
+    private suspend fun handleLocationWithoutFirebase(): Result {
+        return try {
+            val loc: Location? = LocationUtils.getLastKnownLocation(applicationContext)
+
+            if (loc != null) {
+                val ts = System.currentTimeMillis()
+                val entity = LocationEntity(ts, loc.latitude, loc.longitude)
+
+                // Save to local database only
+                db.locationDao().insertLocation(entity)
+                Log.d(TAG, "Location saved locally (Firebase unavailable)")
+
+                // Update last sync time
+                val prefs = applicationContext.getSharedPreferences(
+                    "location_sync", Context.MODE_PRIVATE)
+                prefs.edit().putLong("last_sync_time", ts).apply()
+
+                Result.success()
+            } else {
+                Log.w(TAG, "No location available")
+                Result.retry()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in offline location handling", e)
             Result.retry()
         }
     }
