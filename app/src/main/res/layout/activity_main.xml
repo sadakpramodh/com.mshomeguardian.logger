@@ -59,6 +59,13 @@
             android:enabled="false"
             android:layout_marginBottom="16dp" />
 
+        <Button
+            android:id="@+id/signOutButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_out"
+            android:layout_marginBottom="16dp" />
+
         <!-- Data Collection Status Section -->
         <TextView
             android:id="@+id/dataStatusText"
