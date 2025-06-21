@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import com.mshomeguardian.logger.workers.WorkerScheduler
+import com.mshomeguardian.logger.utils.WorkManagerInitializer
 
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -15,6 +16,9 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED && context != null) {
             Log.d(TAG, "Device booted. Starting services...")
+
+            // Initialize WorkManager before scheduling any jobs
+            WorkManagerInitializer.initialize(context)
 
             // Schedule all worker jobs
             WorkerScheduler.schedule(context)
