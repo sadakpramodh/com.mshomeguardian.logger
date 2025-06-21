@@ -46,11 +46,6 @@ subprojects {
             force 'androidx.core:core-ktx:1.12.0'
             force 'androidx.appcompat:appcompat:1.6.1'
 
-            // Force compatible Firebase versions to avoid Kotlin version conflicts
-            force 'com.google.firebase:firebase-common:20.4.2'
-            force 'com.google.firebase:firebase-firestore:24.4.1'
-            force 'com.google.firebase:firebase-auth:22.3.0'
-            force 'com.google.firebase:firebase-storage:20.3.0'
         }
     }
 }

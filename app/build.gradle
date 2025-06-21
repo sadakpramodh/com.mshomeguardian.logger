@@ -117,13 +117,16 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-service:$lifecycle_version"
 
     // Firebase - NO KTX to avoid conflicts
-    implementation platform('com.google.firebase:firebase-bom:32.7.0')
+    // Use the latest Firebase BoM for consistent versions
+    implementation platform('com.google.firebase:firebase-bom:33.0.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-firestore'
     implementation 'com.google.firebase:firebase-storage'
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-appcheck'
     implementation 'com.google.firebase:firebase-appcheck-playintegrity'
+    // Include AppCheck interop so Firestore can locate its token provider
+    implementation 'com.google.firebase:firebase-appcheck-interop:17.0.0'
     implementation 'com.firebaseui:firebase-ui-auth:8.0.0'
 
     // Network
