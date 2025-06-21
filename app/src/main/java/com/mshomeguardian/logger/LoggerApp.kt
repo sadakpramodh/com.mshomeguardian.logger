@@ -5,15 +5,14 @@ import android.content.Context
 import android.util.Log
 import androidx.multidex.MultiDex
 import com.google.firebase.FirebaseApp
-// ❌ COMPLETELY REMOVED - App Check imports
-// import com.google.firebase.appcheck.FirebaseAppCheck
-// import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.mshomeguardian.logger.utils.AuthStateHandler
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.WorkManagerInitializer
 
 /**
- * EMERGENCY VERSION - All App Check code removed
+ * Application class with proper Firebase App Check initialization
  */
 class LoggerApp : Application() {
     companion object {
@@ -27,11 +26,11 @@ class LoggerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "LoggerApp starting (EMERGENCY - NO APP CHECK)...")
+        Log.d(TAG, "LoggerApp starting...")
 
         try {
             initializeFirebase()
-            initializeFirestore()  // ADD THIS LINE
+            initializeFirestore()
             initializeDeviceIdentifier()
             initializeWorkManager()
             initializeAuthenticationHandler()
@@ -43,7 +42,7 @@ class LoggerApp : Application() {
     }
 
     /**
-     * BASIC Firebase initialization - NO APP CHECK
+     * Initialize Firebase with App Check
      */
     private fun initializeFirebase() {
         try {
@@ -56,9 +55,19 @@ class LoggerApp : Application() {
                 Log.d(TAG, "Firebase App already initialized")
             }
 
-            // ❌ ALL APP CHECK CODE REMOVED
+            // Initialize App Check with Play Integrity
+            try {
+                val firebaseAppCheck = FirebaseAppCheck.getInstance()
+                firebaseAppCheck.installAppCheckProviderFactory(
+                    PlayIntegrityAppCheckProviderFactory.getInstance()
+                )
+                Log.d(TAG, "Firebase App Check initialized with Play Integrity")
+            } catch (e: Exception) {
+                Log.w(TAG, "App Check initialization failed, continuing without it", e)
+                // Continue without App Check - your app will still work
+            }
 
-            Log.d(TAG, "Firebase initialized successfully (NO APP CHECK)")
+            Log.d(TAG, "Firebase initialized successfully")
 
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing Firebase", e)
@@ -66,7 +75,7 @@ class LoggerApp : Application() {
     }
 
     /**
-     * Configure Firestore with offline persistence to fix connection issues
+     * Configure Firestore with offline persistence
      */
     private fun initializeFirestore() {
         try {
@@ -76,7 +85,7 @@ class LoggerApp : Application() {
 
             // Configure Firestore settings for better connectivity
             val settings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
-                .setPersistenceEnabled(true) // Enable offline persistence
+                .setPersistenceEnabled(true)
                 .setCacheSizeBytes(com.google.firebase.firestore.FirebaseFirestoreSettings.CACHE_SIZE_UNLIMITED)
                 .build()
 
@@ -85,7 +94,6 @@ class LoggerApp : Application() {
             Log.d(TAG, "Firestore configured with offline persistence")
         } catch (e: Exception) {
             Log.e(TAG, "Error configuring Firestore", e)
-            // Don't crash the app - it can still work with limited functionality
         }
     }
 

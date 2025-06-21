@@ -54,6 +54,9 @@ object FirebaseServiceHelper {
                 e.message?.contains("permission", ignoreCase = true) == true -> {
                     Log.w(TAG, "$operationName permission denied - check security rules")
                 }
+                e.message?.contains("NOT_FOUND") == true -> {
+                    Log.w(TAG, "$operationName document not found - this is expected for new documents")
+                }
                 else -> {
                     Log.w(TAG, "$operationName failed: ${e.message}")
                 }
@@ -400,7 +403,7 @@ object FirebaseServiceHelper {
     }
 
     /**
-     * Update device last active timestamp
+     * Update device last active timestamp (creates document if it doesn't exist)
      */
     suspend fun updateDeviceLastActive(userEmail: String, deviceId: String): Boolean {
         return safeFirestoreOperation(
@@ -409,11 +412,14 @@ object FirebaseServiceHelper {
 
                 val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
                 val updateData = mapOf(
-                    "lastActive" to System.currentTimeMillis()
+                    "lastActive" to System.currentTimeMillis(),
+                    "deviceId" to deviceId,
+                    "isActive" to true
                 )
 
+                // Use set with merge instead of update to create document if it doesn't exist
                 firestoreInstance.document(deviceDocPath)
-                    .update(updateData)
+                    .set(updateData, SetOptions.merge())
                     .await()
 
                 true
