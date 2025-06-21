@@ -21,7 +21,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.firebase.ui.auth.AuthUI
 import com.mshomeguardian.logger.R
-import com.mshomeguardian.logger.ui.SignInActivity
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.services.LocationMonitoringService
@@ -41,7 +40,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Fail-safe MainActivity with comprehensive error handling and permission management
+ * Simplified MainActivity with only FirebaseUI authentication
  */
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
@@ -120,12 +119,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         safeExecute("onCreate") {
-            setContentView(R.layout.activity_main)
-
+            // Check authentication first
             if (!AuthManager.isSignedIn()) {
+                Log.d(TAG, "User not signed in, starting SignInActivity")
                 startSignInActivity()
                 return@safeExecute
             }
+
+            Log.d(TAG, "User signed in: ${AuthManager.getCurrentUser()?.email}")
+            setContentView(R.layout.activity_main)
 
             initializeUI()
             checkBatteryOptimizations()
@@ -243,9 +245,7 @@ class MainActivity : AppCompatActivity() {
 
             signOutButton.setOnClickListener {
                 safeExecute("signOutButton.click") {
-                    AuthUI.getInstance().signOut(this).addOnCompleteListener {
-                        startSignInActivity()
-                    }
+                    signOut()
                 }
             }
         }
@@ -254,8 +254,30 @@ class MainActivity : AppCompatActivity() {
     private fun startSignInActivity() {
         safeExecute("startSignInActivity") {
             val intent = Intent(this, SignInActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             startActivity(intent)
             finish()
+        }
+    }
+
+    private fun signOut() {
+        safeExecute("signOut") {
+            // Stop all services first
+            DataSyncManager.stopAllServices(applicationContext)
+
+            // Sign out using FirebaseUI
+            AuthUI.getInstance()
+                .signOut(this)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        Log.d(TAG, "User signed out successfully")
+                        Toast.makeText(this, "Signed out successfully", Toast.LENGTH_SHORT).show()
+                        startSignInActivity()
+                    } else {
+                        Log.e(TAG, "Error signing out", task.exception)
+                        Toast.makeText(this, "Error signing out", Toast.LENGTH_SHORT).show()
+                    }
+                }
         }
     }
 
@@ -302,6 +324,12 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         safeExecute("onResume") {
+            // Check if user is still signed in
+            if (!AuthManager.isSignedIn()) {
+                startSignInActivity()
+                return@safeExecute
+            }
+
             updatePermissionStatus()
             updateHandler.post(updateRunnable)
 

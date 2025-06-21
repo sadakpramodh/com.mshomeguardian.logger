@@ -30,6 +30,7 @@ import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.LocationEntity
 import com.mshomeguardian.logger.ui.MainActivity
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
