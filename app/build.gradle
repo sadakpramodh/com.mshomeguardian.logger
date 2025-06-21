@@ -124,6 +124,8 @@ dependencies {
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-appcheck'
     implementation 'com.google.firebase:firebase-appcheck-playintegrity'
+    // Explicit version ensures the class is packaged
+    implementation 'com.google.firebase:firebase-appcheck-interop:17.0.0'
     implementation 'com.firebaseui:firebase-ui-auth:8.0.0'
 
     // Network
