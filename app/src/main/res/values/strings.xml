@@ -14,4 +14,5 @@
     <string name="stop_transcription">Stop Transcription</string>
     <string name="transcription_activity_title">Live Transcription</string>
     <string name="transcription_placeholder">Transcribed text will appear here...</string>
+    <string name="sign_out">Sign Out</string>
 </resources>

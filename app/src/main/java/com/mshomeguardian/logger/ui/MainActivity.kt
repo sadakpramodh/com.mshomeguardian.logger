@@ -19,8 +19,11 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.firebase.ui.auth.AuthUI
 import com.mshomeguardian.logger.R
+import com.mshomeguardian.logger.ui.SignInActivity
 import com.mshomeguardian.logger.data.AppDatabase
+import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.services.LocationMonitoringService
 import com.mshomeguardian.logger.utils.DataSyncManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
@@ -62,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var syncButton: Button
     private lateinit var recordingButton: Button
     private lateinit var liveTranscriptionButton: Button  // New button for live transcription
+    private lateinit var signOutButton: Button
 
     // Status text views
     private lateinit var locationStatusText: TextView
@@ -108,6 +112,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        if (!AuthManager.isSignedIn()) {
+            startSignInActivity()
+        }
+
         // Initialize UI elements
         statusText = findViewById(R.id.statusText)
         permissionsButton = findViewById(R.id.permissionsButton)
@@ -115,6 +123,7 @@ class MainActivity : AppCompatActivity() {
         syncButton = findViewById(R.id.syncButton)
         recordingButton = findViewById(R.id.recordingButton)
         liveTranscriptionButton = findViewById(R.id.liveTranscriptionButton)  // Initialize new button
+        signOutButton = findViewById(R.id.signOutButton)
 
         // Status text views
         locationStatusText = findViewById(R.id.locationStatusText)
@@ -177,6 +186,12 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+
+        signOutButton.setOnClickListener {
+            AuthUI.getInstance().signOut(this).addOnCompleteListener {
+                startSignInActivity()
+            }
+        }
         // Check permissions on startup
         updatePermissionStatus()
 
@@ -196,6 +211,11 @@ class MainActivity : AppCompatActivity() {
      */
     private fun startLiveTranscription() {
         val intent = Intent(this, LiveTranscriptionActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun startSignInActivity() {
+        val intent = Intent(this, SignInActivity::class.java)
         startActivity(intent)
     }
 
