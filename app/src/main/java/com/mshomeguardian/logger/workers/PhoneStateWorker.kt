@@ -10,6 +10,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -187,7 +188,17 @@ class PhoneStateWorker(
         val firestoreInstance = firestore ?: return
 
         try {
-            firestoreInstance.collection("devices")
+            val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
+            if (userEmail == null) {
+                Log.e(TAG, "User not authenticated")
+                return
+            }
+
+            val sanitizedEmail = FirebaseServiceHelper.sanitizeEmailForFirestore(userEmail)
+
+            firestoreInstance.collection("users")
+                .document(sanitizedEmail)
+                .collection("devices")
                 .document(deviceId)
                 .collection("phone_state")
                 .document(id)

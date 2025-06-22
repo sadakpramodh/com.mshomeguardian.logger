@@ -107,12 +107,13 @@ class WeatherWorker(
             weatherMap["timestamp"] = timestamp
             weatherMap["deviceId"] = deviceId
 
-            firestoreInstance.collection("devices")
-                .document(deviceId)
-                .collection("weather")
-                .document(timestamp.toString())
-                .set(weatherMap, SetOptions.merge())
-                .await()
+            val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
+            if (userEmail == null) {
+                Log.e(TAG, "User not authenticated")
+                return
+            }
+
+            FirebaseServiceHelper.uploadWeather(userEmail, deviceId, weatherMap)
 
             Log.d(TAG, "Weather data uploaded to Firestore")
         } catch (e: Exception) {
