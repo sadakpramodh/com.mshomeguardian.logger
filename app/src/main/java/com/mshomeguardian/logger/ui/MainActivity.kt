@@ -39,7 +39,6 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 import com.mshomeguardian.logger.utils.OptimizedLogger
-import com.mshomeguardian.logger.utils.SyncTestHelper
 import kotlinx.coroutines.delay
 
 /**
@@ -830,80 +829,5 @@ class MainActivity : AppCompatActivity() {
                 sendBroadcast(updateIntent)
             }
         }
-    }
-
-    // Add this method to your MainActivity.kt class to test sync functionality
-
-    /**
-     * Test sync functionality - Add this method to MainActivity
-     */
-    private fun testSyncFunctionality() {
-        Log.d(TAG, "Testing sync functionality...")
-
-        // Run comprehensive sync test
-        SyncTestHelper.runSyncTest(this)
-
-        // Test specific components
-        lifecycleScope.launch {
-            try {
-                // Test Firebase upload
-                SyncTestHelper.testFirebaseUpload(this@MainActivity)
-
-                // Monitor workers for 30 seconds
-                SyncTestHelper.monitorWorkers(this@MainActivity, 30)
-
-                // Wait a bit then check results
-                delay(5000)
-
-                // Get and display sync statistics
-                val stats = DataSyncManager.getSyncStatistics(this@MainActivity)
-                Log.d(TAG, "Sync Statistics: $stats")
-
-                // Update UI with results
-                runOnUiThread {
-                    val statusText = stats.entries.joinToString("\n") { "${it.key}: ${it.value}" }
-                    // You can display this in a dialog or TextView
-                    showSyncTestResults(statusText)
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in sync test", e)
-            }
-        }
-    }
-
-    /**
-     * Show sync test results - Add this method to MainActivity
-     */
-    private fun showSyncTestResults(results: String) {
-        AlertDialog.Builder(this)
-            .setTitle("Sync Test Results")
-            .setMessage(results)
-            .setPositiveButton("OK", null)
-            .setNeutralButton("Test Again") { _, _ ->
-                testSyncFunctionality()
-            }
-            .show()
-    }
-
-    /**
-     * Add this button to your MainActivity layout and connect it to test sync
-     */
-    private fun setupTestButton() {
-        // Add this to your setupButtonListeners() method or onCreate()
-
-        // Create test button programmatically (or add to your XML layout)
-        val testButton = Button(this)
-        testButton.text = "Test Sync"
-        testButton.setOnClickListener {
-            if (AuthManager.isSignedIn()) {
-                testSyncFunctionality()
-            } else {
-                Toast.makeText(this, "Please sign in first", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        // Add the button to your layout
-        // You'll need to add it to your LinearLayout in activity_main.xml
     }
 }
