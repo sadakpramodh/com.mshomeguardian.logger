@@ -5,14 +5,14 @@ import android.content.Context
 import android.util.Log
 import androidx.multidex.MultiDex
 import com.google.firebase.FirebaseApp
-import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.mshomeguardian.logger.utils.AuthStateHandler
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.WorkManagerInitializer
+import com.mshomeguardian.logger.utils.OptimizedLogger
 
 /**
- * Application class with proper Firebase App Check initialization
+ * Optimized Application class without Firebase App Check
+ * (App Check removed to reduce APK size - add back if needed for production)
  */
 class LoggerApp : Application() {
     companion object {
@@ -26,7 +26,7 @@ class LoggerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "LoggerApp starting...")
+        OptimizedLogger.d(TAG, "LoggerApp starting...")
 
         try {
             initializeFirebase()
@@ -35,42 +35,36 @@ class LoggerApp : Application() {
             initializeWorkManager()
             initializeAuthenticationHandler()
 
-            Log.d(TAG, "LoggerApp initialization completed successfully")
+            OptimizedLogger.d(TAG, "LoggerApp initialization completed successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error during LoggerApp initialization", e)
+            OptimizedLogger.e(TAG, "Error during LoggerApp initialization", e)
         }
     }
 
     /**
-     * Initialize Firebase with App Check
+     * Initialize Firebase without App Check (for optimized build)
      */
     private fun initializeFirebase() {
         try {
-            Log.d(TAG, "Initializing Firebase...")
+            OptimizedLogger.d(TAG, "Initializing Firebase...")
 
             if (FirebaseApp.getApps(this).isEmpty()) {
                 FirebaseApp.initializeApp(this)
-                Log.d(TAG, "Firebase App initialized")
+                OptimizedLogger.d(TAG, "Firebase App initialized")
             } else {
-                Log.d(TAG, "Firebase App already initialized")
+                OptimizedLogger.d(TAG, "Firebase App already initialized")
             }
 
-            // Initialize App Check with Play Integrity
-            try {
-                val firebaseAppCheck = FirebaseAppCheck.getInstance()
-                firebaseAppCheck.installAppCheckProviderFactory(
-                    PlayIntegrityAppCheckProviderFactory.getInstance()
-                )
-                Log.d(TAG, "Firebase App Check initialized with Play Integrity")
-            } catch (e: Exception) {
-                Log.w(TAG, "App Check initialization failed, continuing without it", e)
-                // Continue without App Check - your app will still work
-            }
+            // NOTE: Firebase App Check removed for optimization
+            // If you need App Check for production, add back these dependencies to build.gradle:
+            // implementation 'com.google.firebase:firebase-appcheck'
+            // implementation 'com.google.firebase:firebase-appcheck-playintegrity'
+            // implementation 'com.google.firebase:firebase-appcheck-interop'
 
-            Log.d(TAG, "Firebase initialized successfully")
+            OptimizedLogger.d(TAG, "Firebase initialized successfully (without App Check)")
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing Firebase", e)
+            OptimizedLogger.e(TAG, "Error initializing Firebase", e)
         }
     }
 
@@ -79,7 +73,7 @@ class LoggerApp : Application() {
      */
     private fun initializeFirestore() {
         try {
-            Log.d(TAG, "Configuring Firestore...")
+            OptimizedLogger.d(TAG, "Configuring Firestore...")
 
             val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
 
@@ -91,75 +85,78 @@ class LoggerApp : Application() {
 
             firestore.firestoreSettings = settings
 
-            Log.d(TAG, "Firestore configured with offline persistence")
+            OptimizedLogger.d(TAG, "Firestore configured with offline persistence")
         } catch (e: Exception) {
-            Log.e(TAG, "Error configuring Firestore", e)
+            OptimizedLogger.e(TAG, "Error configuring Firestore", e)
         }
     }
 
     private fun initializeDeviceIdentifier() {
         try {
-            Log.d(TAG, "Initializing device identifier...")
+            OptimizedLogger.d(TAG, "Initializing device identifier...")
             val deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
-            Log.d(TAG, "Device ID initialized: $deviceId")
+            OptimizedLogger.d(TAG, "Device ID initialized: $deviceId")
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing device ID", e)
+            OptimizedLogger.e(TAG, "Error initializing device ID", e)
         }
     }
 
     private fun initializeWorkManager() {
         try {
-            Log.d(TAG, "Initializing WorkManager...")
+            OptimizedLogger.d(TAG, "Initializing WorkManager...")
             WorkManagerInitializer.initialize(applicationContext)
-            Log.d(TAG, "WorkManager initialized successfully")
+            OptimizedLogger.d(TAG, "WorkManager initialized successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing WorkManager", e)
+            OptimizedLogger.e(TAG, "Error initializing WorkManager", e)
         }
     }
 
     private fun initializeAuthenticationHandler() {
         try {
-            Log.d(TAG, "Initializing authentication state handler...")
+            OptimizedLogger.d(TAG, "Initializing authentication state handler...")
             AuthStateHandler.initialize(applicationContext)
-            Log.d(TAG, "Authentication state handler initialized")
+            OptimizedLogger.d(TAG, "Authentication state handler initialized")
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing authentication state handler", e)
+            OptimizedLogger.e(TAG, "Error initializing authentication state handler", e)
         }
     }
 
     override fun onTerminate() {
         super.onTerminate()
-        Log.d(TAG, "LoggerApp terminating...")
+        OptimizedLogger.d(TAG, "LoggerApp terminating...")
         try {
             AuthStateHandler.cleanup()
-            Log.d(TAG, "LoggerApp cleanup completed")
+            OptimizedLogger.d(TAG, "LoggerApp cleanup completed")
         } catch (e: Exception) {
-            Log.e(TAG, "Error during LoggerApp cleanup", e)
+            OptimizedLogger.e(TAG, "Error during LoggerApp cleanup", e)
         }
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        Log.w(TAG, "Low memory warning received")
+        OptimizedLogger.w(TAG, "Low memory warning received")
         try {
+            // Trigger garbage collection on low memory
             System.gc()
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling low memory", e)
+            OptimizedLogger.e(TAG, "Error handling low memory", e)
         }
     }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        Log.d(TAG, "Memory trim level: $level")
+        OptimizedLogger.d(TAG, "Memory trim level: $level")
         try {
             if (level >= TRIM_MEMORY_RUNNING_LOW) {
+                // More aggressive memory cleanup
                 System.gc()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error during memory trimming", e)
+            OptimizedLogger.e(TAG, "Error during memory trimming", e)
         }
     }
 
+    // Utility methods
     fun getAppContext(): Context = applicationContext
 
     fun isInitialized(): Boolean {
@@ -167,7 +164,7 @@ class LoggerApp : Application() {
             FirebaseApp.getApps(this).isNotEmpty() &&
                     DeviceIdentifier.getPersistentDeviceId(applicationContext).isNotEmpty()
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking initialization status", e)
+            OptimizedLogger.e(TAG, "Error checking initialization status", e)
             false
         }
     }
@@ -177,7 +174,7 @@ class LoggerApp : Application() {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             "${packageInfo.versionName} (${packageInfo.versionCode})"
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting app version", e)
+            OptimizedLogger.e(TAG, "Error getting app version", e)
             "Unknown"
         }
     }

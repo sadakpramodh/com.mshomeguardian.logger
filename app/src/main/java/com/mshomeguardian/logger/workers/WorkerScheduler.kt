@@ -1,7 +1,6 @@
 package com.mshomeguardian.logger.workers
 
 import android.content.Context
-import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -9,62 +8,109 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.mshomeguardian.logger.utils.OptimizedLogger
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 /**
- * Scheduler that sets up all periodic work tasks for the app
+ * Optimized WorkerScheduler with intelligent scheduling and reduced frequency
  */
 object WorkerScheduler {
     private const val TAG = "WorkerScheduler"
 
-    // Work tags
-    private const val LOCATION_WORK_NAME = "LocationWork"
-    private const val CALL_LOG_WORK_NAME = "CallLogWork"
-    private const val MESSAGE_WORK_NAME = "MessageWork"
-    private const val CONTACTS_WORK_NAME = "ContactsWork"
-    private const val DEVICE_INFO_WORK_NAME = "DeviceInfoWork"
-    private const val WEATHER_WORK_NAME = "WeatherWork"
-    private const val RECORDING_CLEANUP_WORK_NAME = "RecordingCleanupWork"
+    // Optimized work names
+    private const val LOCATION_WORK_NAME = "OptimizedLocationWork"
+    private const val CALL_LOG_WORK_NAME = "OptimizedCallLogWork"
+    private const val MESSAGE_WORK_NAME = "OptimizedMessageWork"
+    private const val CONTACTS_WORK_NAME = "OptimizedContactsWork"
+    private const val DEVICE_INFO_WORK_NAME = "OptimizedDeviceInfoWork"
+    private const val WEATHER_WORK_NAME = "OptimizedWeatherWork"
+    private const val RECORDING_CLEANUP_WORK_NAME = "OptimizedRecordingCleanupWork"
 
     /**
-     * Schedule all workers
+     * Schedule all workers with intelligent frequency
      */
     fun schedule(context: Context) {
         try {
-            Log.d(TAG, "Scheduling all workers")
+            OptimizedLogger.d(TAG, "Scheduling optimized workers")
 
-            // Schedule individual workers
-            scheduleLocationWork(context)
-            scheduleCallLogWork(context)
-            scheduleMessageWork(context)
-            scheduleContactsWork(context)
-            scheduleDeviceInfoWork(context)
-            scheduleWeatherWork(context)
+            // Get adaptive intervals based on time of day
+            val intervals = getAdaptiveIntervals()
+
+            scheduleLocationWork(context, intervals.locationInterval)
+            scheduleCallLogWork(context, intervals.communicationInterval)
+            scheduleMessageWork(context, intervals.communicationInterval)
+            scheduleContactsWork(context, intervals.contactsInterval)
+            scheduleDeviceInfoWork(context, intervals.deviceInfoInterval)
+            scheduleWeatherWork(context, intervals.weatherInterval)
             scheduleRecordingCleanupWork(context)
 
-            Log.d(TAG, "All workers scheduled successfully")
+            OptimizedLogger.d(TAG, "All optimized workers scheduled successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling workers", e)
+            OptimizedLogger.e(TAG, "Error scheduling workers", e)
         }
     }
 
     /**
-     * Schedule location tracking worker
+     * Get adaptive intervals based on time of day and usage patterns
      */
-    private fun scheduleLocationWork(context: Context) {
+    private fun getAdaptiveIntervals(): WorkerIntervals {
+        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+        return when {
+            currentHour in 22..6 -> {
+                // Night mode: reduced frequency
+                WorkerIntervals(
+                    locationInterval = 60L,      // 1 hour
+                    communicationInterval = 60L,  // 1 hour
+                    contactsInterval = 360L,      // 6 hours
+                    deviceInfoInterval = 720L,    // 12 hours
+                    weatherInterval = 120L        // 2 hours
+                )
+            }
+            currentHour in 9..17 -> {
+                // Work hours: normal frequency
+                WorkerIntervals(
+                    locationInterval = 30L,       // 30 minutes
+                    communicationInterval = 15L,  // 15 minutes
+                    contactsInterval = 120L,      // 2 hours
+                    deviceInfoInterval = 360L,    // 6 hours
+                    weatherInterval = 60L         // 1 hour
+                )
+            }
+            else -> {
+                // Evening/morning: balanced frequency
+                WorkerIntervals(
+                    locationInterval = 20L,       // 20 minutes
+                    communicationInterval = 20L,  // 20 minutes
+                    contactsInterval = 180L,      // 3 hours
+                    deviceInfoInterval = 480L,    // 8 hours
+                    weatherInterval = 90L         // 1.5 hours
+                )
+            }
+        }
+    }
+
+    /**
+     * Create optimized constraints for better battery life
+     */
+    private fun createOptimizedConstraints(): Constraints {
+        return Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiresBatteryNotLow(true)
+            .setRequiresDeviceIdle(false) // Don't wait for idle to improve responsiveness
+            .build()
+    }
+
+    private fun scheduleLocationWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            val constraints = createOptimizedConstraints()
 
             val locationWorkRequest = PeriodicWorkRequestBuilder<LocationWorker>(
-                15, TimeUnit.MINUTES
+                intervalMinutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
-                    30, TimeUnit.SECONDS
-                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -73,29 +119,21 @@ object WorkerScheduler {
                 locationWorkRequest
             )
 
-            Log.d(TAG, "Location worker scheduled")
+            OptimizedLogger.d(TAG, "Location worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling location worker", e)
+            OptimizedLogger.e(TAG, "Error scheduling location worker", e)
         }
     }
 
-    /**
-     * Schedule call log sync worker
-     */
-    private fun scheduleCallLogWork(context: Context) {
+    private fun scheduleCallLogWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            val constraints = createOptimizedConstraints()
 
             val callLogWorkRequest = PeriodicWorkRequestBuilder<CallLogWorker>(
-                15, TimeUnit.MINUTES
+                intervalMinutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
-                    30, TimeUnit.SECONDS
-                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -104,29 +142,21 @@ object WorkerScheduler {
                 callLogWorkRequest
             )
 
-            Log.d(TAG, "Call log worker scheduled")
+            OptimizedLogger.d(TAG, "Call log worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling call log worker", e)
+            OptimizedLogger.e(TAG, "Error scheduling call log worker", e)
         }
     }
 
-    /**
-     * Schedule message sync worker
-     */
-    private fun scheduleMessageWork(context: Context) {
+    private fun scheduleMessageWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            val constraints = createOptimizedConstraints()
 
             val messageWorkRequest = PeriodicWorkRequestBuilder<MessageWorker>(
-                15, TimeUnit.MINUTES
+                intervalMinutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
-                    30, TimeUnit.SECONDS
-                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -135,29 +165,21 @@ object WorkerScheduler {
                 messageWorkRequest
             )
 
-            Log.d(TAG, "Message worker scheduled")
+            OptimizedLogger.d(TAG, "Message worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling message worker", e)
+            OptimizedLogger.e(TAG, "Error scheduling message worker", e)
         }
     }
 
-    /**
-     * Schedule contacts sync worker
-     */
-    private fun scheduleContactsWork(context: Context) {
+    private fun scheduleContactsWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            val constraints = createOptimizedConstraints()
 
             val contactsWorkRequest = PeriodicWorkRequestBuilder<ContactsWorker>(
-                30, TimeUnit.MINUTES // Less frequent than other sync jobs
+                intervalMinutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
-                    30, TimeUnit.SECONDS
-                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 2, TimeUnit.MINUTES)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -166,29 +188,21 @@ object WorkerScheduler {
                 contactsWorkRequest
             )
 
-            Log.d(TAG, "Contacts worker scheduled")
+            OptimizedLogger.d(TAG, "Contacts worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling contacts worker", e)
+            OptimizedLogger.e(TAG, "Error scheduling contacts worker", e)
         }
     }
 
-    /**
-     * Schedule device info update worker
-     */
-    private fun scheduleDeviceInfoWork(context: Context) {
+    private fun scheduleDeviceInfoWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            val constraints = createOptimizedConstraints()
 
             val deviceInfoWorkRequest = PeriodicWorkRequestBuilder<DeviceInfoWorker>(
-                6, TimeUnit.HOURS  // Every 6 hours
+                intervalMinutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
-                    30, TimeUnit.SECONDS
-                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -197,29 +211,21 @@ object WorkerScheduler {
                 deviceInfoWorkRequest
             )
 
-            Log.d(TAG, "Device info worker scheduled")
+            OptimizedLogger.d(TAG, "Device info worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling device info worker", e)
+            OptimizedLogger.e(TAG, "Error scheduling device info worker", e)
         }
     }
 
-    /**
-     * Schedule weather updates for widget
-     */
-    private fun scheduleWeatherWork(context: Context) {
+    private fun scheduleWeatherWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            val constraints = createOptimizedConstraints()
 
             val weatherWorkRequest = PeriodicWorkRequestBuilder<WeatherWorker>(
-                30, TimeUnit.MINUTES  // Update weather every 30 minutes
+                intervalMinutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
-                    30, TimeUnit.SECONDS
-                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 2, TimeUnit.MINUTES)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -228,24 +234,22 @@ object WorkerScheduler {
                 weatherWorkRequest
             )
 
-            Log.d(TAG, "Weather worker scheduled")
+            OptimizedLogger.d(TAG, "Weather worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling weather worker", e)
+            OptimizedLogger.e(TAG, "Error scheduling weather worker", e)
         }
     }
 
-    /**
-     * Schedule cleanup of old recordings
-     */
     private fun scheduleRecordingCleanupWork(context: Context) {
         try {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
                 .setRequiresBatteryNotLow(true)
+                .setRequiresCharging(true) // Only during charging
                 .build()
 
             val cleanupWorkRequest = PeriodicWorkRequestBuilder<RecordingCleanupWorker>(
-                1, TimeUnit.DAYS  // Daily cleanup
+                1, TimeUnit.DAYS
             )
                 .setConstraints(constraints)
                 .build()
@@ -256,66 +260,82 @@ object WorkerScheduler {
                 cleanupWorkRequest
             )
 
-            Log.d(TAG, "Recording cleanup worker scheduled")
+            OptimizedLogger.d(TAG, "Recording cleanup worker scheduled")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling recording cleanup worker", e)
+            OptimizedLogger.e(TAG, "Error scheduling recording cleanup worker", e)
         }
     }
 
     /**
-     * Run all workers immediately (for testing or initial sync)
+     * Run critical workers immediately with optimized constraints
+     */
+    fun runCriticalWorkersOnce(context: Context) {
+        try {
+            OptimizedLogger.d(TAG, "Running critical workers once")
+
+            val workManager = WorkManager.getInstance(context)
+            val constraints = createOptimizedConstraints()
+
+            // Only run the most critical workers
+            val criticalWorkers = listOf(
+                OneTimeWorkRequestBuilder<LocationWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<DeviceInfoWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<WeatherWorker>().setConstraints(constraints).build()
+            )
+
+            criticalWorkers.forEach { workManager.enqueue(it) }
+            OptimizedLogger.d(TAG, "Critical workers enqueued successfully")
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error running critical workers", e)
+        }
+    }
+
+    /**
+     * Run all workers immediately (for manual sync)
      */
     fun runAllWorkersOnce(context: Context) {
         try {
-            Log.d(TAG, "Running all workers once")
+            OptimizedLogger.d(TAG, "Running all workers once")
 
             val workManager = WorkManager.getInstance(context)
+            val constraints = createOptimizedConstraints()
 
-            // Run location worker
-            val locationWorkerRequest = OneTimeWorkRequestBuilder<LocationWorker>().build()
-            workManager.enqueue(locationWorkerRequest)
-            Log.d(TAG, "Enqueued one-time location worker: ${locationWorkerRequest.id}")
+            val workers = listOf(
+                OneTimeWorkRequestBuilder<LocationWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<CallLogWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<MessageWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<ContactsWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<DeviceInfoWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<WeatherWorker>().setConstraints(constraints).build()
+            )
 
-            // Run call log worker
-            val callLogWorkerRequest = OneTimeWorkRequestBuilder<CallLogWorker>().build()
-            workManager.enqueue(callLogWorkerRequest)
-            Log.d(TAG, "Enqueued one-time call log worker: ${callLogWorkerRequest.id}")
-
-            // Run message worker
-            val messageWorkerRequest = OneTimeWorkRequestBuilder<MessageWorker>().build()
-            workManager.enqueue(messageWorkerRequest)
-            Log.d(TAG, "Enqueued one-time message worker: ${messageWorkerRequest.id}")
-
-            // Run contacts worker
-            val contactsWorkerRequest = OneTimeWorkRequestBuilder<ContactsWorker>().build()
-            workManager.enqueue(contactsWorkerRequest)
-            Log.d(TAG, "Enqueued one-time contacts worker: ${contactsWorkerRequest.id}")
-
-            // Run device info worker
-            val deviceInfoWorkerRequest = OneTimeWorkRequestBuilder<DeviceInfoWorker>().build()
-            workManager.enqueue(deviceInfoWorkerRequest)
-            Log.d(TAG, "Enqueued one-time device info worker: ${deviceInfoWorkerRequest.id}")
-
-            // Run weather worker
-            val weatherWorkerRequest = OneTimeWorkRequestBuilder<WeatherWorker>().build()
-            workManager.enqueue(weatherWorkerRequest)
-            Log.d(TAG, "Enqueued one-time weather worker: ${weatherWorkerRequest.id}")
-
-            Log.d(TAG, "All one-time workers enqueued successfully")
+            workers.forEach { workManager.enqueue(it) }
+            OptimizedLogger.d(TAG, "All workers enqueued successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error running one-time workers", e)
+            OptimizedLogger.e(TAG, "Error running all workers", e)
         }
     }
 
     /**
-     * Cancel all scheduled workers
+     * Cancel all work efficiently
      */
     fun cancelAllWork(context: Context) {
         try {
             WorkManager.getInstance(context).cancelAllWork()
-            Log.d(TAG, "All work cancelled")
+            OptimizedLogger.d(TAG, "All work cancelled")
         } catch (e: Exception) {
-            Log.e(TAG, "Error cancelling work", e)
+            OptimizedLogger.e(TAG, "Error cancelling work", e)
         }
     }
+
+    /**
+     * Data class for worker intervals
+     */
+    private data class WorkerIntervals(
+        val locationInterval: Long,
+        val communicationInterval: Long,
+        val contactsInterval: Long,
+        val deviceInfoInterval: Long,
+        val weatherInterval: Long
+    )
 }

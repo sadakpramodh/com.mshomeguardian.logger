@@ -39,6 +39,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+import com.mshomeguardian.logger.utils.OptimizedLogger
+
 /**
  * Simplified MainActivity with only FirebaseUI authentication
  */
@@ -121,12 +123,12 @@ class MainActivity : AppCompatActivity() {
         safeExecute("onCreate") {
             // Check authentication first
             if (!AuthManager.isSignedIn()) {
-                Log.d(TAG, "User not signed in, starting SignInActivity")
+                OptimizedLogger.d(TAG, "User not signed in, starting SignInActivity")
                 startSignInActivity()
                 return@safeExecute
             }
 
-            Log.d(TAG, "User signed in: ${AuthManager.getCurrentUser()?.email}")
+            OptimizedLogger.d(TAG, "User signed in: ${AuthManager.getCurrentUser()?.email}")
             setContentView(R.layout.activity_main)
 
             initializeUI()
@@ -141,7 +143,7 @@ class MainActivity : AppCompatActivity() {
         try {
             action()
         } catch (e: Exception) {
-            Log.e(TAG, "Error in $operation", e)
+            OptimizedLogger.e(TAG, "Error in $operation", e)
             handleError("Error in $operation: ${e.message}")
         }
     }
@@ -153,9 +155,9 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             try {
                 Toast.makeText(this, "Error: $message", Toast.LENGTH_LONG).show()
-                Log.e(TAG, message)
+                OptimizedLogger.e(TAG, message)
             } catch (e: Exception) {
-                Log.e(TAG, "Error showing error message", e)
+                OptimizedLogger.e(TAG, "Error showing error message", e)
             }
         }
     }
@@ -195,7 +197,7 @@ class MainActivity : AppCompatActivity() {
                 startBackgroundServices()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing UI", e)
+            OptimizedLogger.e(TAG, "Error initializing UI", e)
             handleError("Failed to initialize UI")
         }
     }
@@ -270,11 +272,11 @@ class MainActivity : AppCompatActivity() {
                 .signOut(this)
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
-                        Log.d(TAG, "User signed out successfully")
+                        OptimizedLogger.d(TAG, "User signed out successfully")
                         Toast.makeText(this, "Signed out successfully", Toast.LENGTH_SHORT).show()
                         startSignInActivity()
                     } else {
-                        Log.e(TAG, "Error signing out", task.exception)
+                        OptimizedLogger.e(TAG, "Error signing out", task.exception)
                         Toast.makeText(this, "Error signing out", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -353,7 +355,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun requestAllPermissions() {
         safeExecute("requestAllPermissions") {
-            Log.d(TAG, "Requesting all permissions")
+            OptimizedLogger.d(TAG, "Requesting all permissions")
 
             // Check if we already have all permissions
             if (areAllRequiredPermissionsGranted()) {
@@ -419,7 +421,7 @@ class MainActivity : AppCompatActivity() {
 
             hasRecordAudio && hasForegroundServiceMicrophone
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking audio permissions", e)
+            OptimizedLogger.e(TAG, "Error checking audio permissions", e)
             false
         }
     }
@@ -461,10 +463,10 @@ class MainActivity : AppCompatActivity() {
                 ALL_PERMISSIONS_REQUEST_CODE -> {
                     val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
                     if (allGranted) {
-                        Log.d(TAG, "Core permissions granted")
+                        OptimizedLogger.d(TAG, "Core permissions granted")
                         requestAdditionalPermissions()
                     } else {
-                        Log.w(TAG, "Some core permissions denied")
+                        OptimizedLogger.w(TAG, "Some core permissions denied")
                         updatePermissionStatus()
                         showPermissionDeniedDialog()
                     }
@@ -622,7 +624,7 @@ class MainActivity : AppCompatActivity() {
 
             coreGranted && foregroundServiceGranted
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking permissions", e)
+            OptimizedLogger.e(TAG, "Error checking permissions", e)
             false
         }
     }
@@ -772,7 +774,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error updating data collection status", e)
+                OptimizedLogger.e(TAG, "Error updating data collection status", e)
                 handleError("Failed to update data collection status")
             }
         }
@@ -781,7 +783,7 @@ class MainActivity : AppCompatActivity() {
     private fun startBackgroundServices() {
         safeExecute("startBackgroundServices") {
             if (areAllRequiredPermissionsGranted()) {
-                Log.d(TAG, "Starting background services")
+                OptimizedLogger.d(TAG, "Starting background services")
 
                 DataSyncManager.initialize(applicationContext)
                 updateWidgets()
@@ -806,11 +808,11 @@ class MainActivity : AppCompatActivity() {
                             ).show()
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error checking transcription models", e)
+                        OptimizedLogger.e(TAG, "Error checking transcription models", e)
                     }
                 }
             } else {
-                Log.d(TAG, "Not all permissions granted, running with limited functionality")
+                OptimizedLogger.d(TAG, "Not all permissions granted, running with limited functionality")
                 updatePermissionStatus()
             }
         }
