@@ -10,14 +10,12 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.MessageEntity
+import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
 
@@ -29,18 +27,11 @@ class MessageWorker(
     private val db = AppDatabase.getInstance(context.applicationContext)
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
-    private val firestore: FirebaseFirestore? = try {
-        FirebaseFirestore.getInstance()
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firestore", e)
-        null
-    }
-
     companion object {
         private const val TAG = "MessageWorker"
-        private const val SYNC_LIMIT = 500 // Limit number of messages to sync at once
+        private const val SYNC_LIMIT = 500
 
-        // New threshold for automatic synchronization
+        // Threshold for automatic synchronization
         private const val MESSAGE_COUNT_THRESHOLD = 3
 
         /**
@@ -51,6 +42,11 @@ class MessageWorker(
             if (ContextCompat.checkSelfPermission(
                     context, Manifest.permission.READ_SMS
                 ) != PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
+
+            // Skip if user not authenticated
+            if (!AuthManager.isSignedIn()) {
                 return false
             }
 
@@ -82,6 +78,13 @@ class MessageWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
+            // Check authentication first
+            val userEmail = AuthManager.getCurrentUser()?.email
+            if (userEmail == null) {
+                Log.w(TAG, "User not authenticated, skipping message sync")
+                return@withContext Result.success()
+            }
+
             // Check permissions
             if (ContextCompat.checkSelfPermission(
                     applicationContext,
@@ -89,6 +92,12 @@ class MessageWorker(
                 ) != PackageManager.PERMISSION_GRANTED) {
                 Log.e(TAG, "Missing READ_SMS permission")
                 return@withContext Result.failure()
+            }
+
+            // Check if Firebase is available
+            if (!FirebaseServiceHelper.isFirebaseAvailable()) {
+                Log.w(TAG, "Firebase not available, skipping message sync")
+                return@withContext Result.success()
             }
 
             // Get last sync time from shared preferences
@@ -99,13 +108,13 @@ class MessageWorker(
             // Sync SMS messages
             val syncCount = syncMessages(lastSyncTime, currentTime)
 
-            // Upload new records to Firestore
-            uploadNewRecords()
+            // Upload new records to Firebase using new structure
+            val uploadCount = uploadNewRecords(userEmail)
 
             // Update last sync time if successful
             prefs.edit().putLong("last_sync_time", currentTime).apply()
 
-            Log.d(TAG, "Message sync completed. Synced $syncCount records.")
+            Log.d(TAG, "Message sync completed. Synced $syncCount records, uploaded $uploadCount to Firebase.")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing messages", e)
@@ -113,7 +122,6 @@ class MessageWorker(
         }
     }
 
-    // Update the syncMessages method to fix the LIMIT issue
     private suspend fun syncMessages(lastSyncTime: Long, currentTime: Long): Int {
         val messages = mutableListOf<MessageEntity>()
         var cursor: Cursor? = null
@@ -138,10 +146,8 @@ class MessageWorker(
                 Telephony.Sms.SERVICE_CENTER
             )
 
-            // Selection for messages after the last sync time
             val selection = "${Telephony.Sms.DATE} > ?"
             val selectionArgs = arrayOf(lastSyncTime.toString())
-            // Remove LIMIT from sortOrder
             val sortOrder = "${Telephony.Sms.DATE} DESC"
 
             cursor = applicationContext.contentResolver.query(
@@ -164,7 +170,6 @@ class MessageWorker(
                 val replyPathPresentIndex = it.getColumnIndex(Telephony.Sms.REPLY_PATH_PRESENT)
                 val serviceCenterIndex = it.getColumnIndex(Telephony.Sms.SERVICE_CENTER)
 
-                // Add counter to limit records processed
                 var recordsProcessed = 0
 
                 while (it.moveToNext() && recordsProcessed < SYNC_LIMIT) {
@@ -186,7 +191,6 @@ class MessageWorker(
                     // Look up contact name if available
                     val contactName = getContactNameFromNumber(address)
 
-                    // Create message entity
                     val messageEntity = MessageEntity(
                         messageId = messageId,
                         syncTimestamp = currentTime,
@@ -212,17 +216,14 @@ class MessageWorker(
                         deviceId = deviceId
                     )
 
-                    // Check if message already exists
                     val existingMessage = db.messageDao().getMessageByMessageId(messageId)
                     if (existingMessage == null) {
                         messages.add(messageEntity)
                     } else {
-                        // Update only if something changed
                         if (existingMessage.isRead != read ||
                             existingMessage.seen != seen ||
                             existingMessage.body != body) {
 
-                            // Keep existing flags
                             db.messageDao().updateMessage(messageEntity.copy(
                                 id = existingMessage.id,
                                 uploadedToCloud = existingMessage.uploadedToCloud,
@@ -235,7 +236,6 @@ class MessageWorker(
                 }
             }
 
-            // Insert all new messages
             if (messages.isNotEmpty()) {
                 db.messageDao().insertMessages(messages)
                 Log.d(TAG, "Inserted ${messages.size} new messages")
@@ -249,7 +249,6 @@ class MessageWorker(
             cursor?.close()
         }
     }
-
 
     private fun getContactNameFromNumber(phoneNumber: String): String? {
         if (phoneNumber.isBlank()) return null
@@ -276,40 +275,53 @@ class MessageWorker(
         }
     }
 
-    private suspend fun uploadNewRecords() {
-        val firestoreInstance = firestore ?: return
-
+    private suspend fun uploadNewRecords(userEmail: String): Int {
         try {
-            // Get messages that haven't been uploaded
             val notUploadedMessages = db.messageDao().getNotUploadedMessages()
             Log.d(TAG, "Found ${notUploadedMessages.size} messages to upload")
 
+            var successCount = 0
+
             for (message in notUploadedMessages) {
                 try {
-                    // Upload to Firestore
-                    firestoreInstance.collection("devices")
-                        .document(deviceId)
-                        .collection("messages")
-                        .document(message.messageId)
-                        .set(message, SetOptions.merge())
-                        .addOnSuccessListener {
-                            // Mark as uploaded in a separate coroutine to avoid blocking
-                            GlobalScope.launch(Dispatchers.IO) {
-                                val uploadTime = System.currentTimeMillis()
-                                db.messageDao().markMessageAsUploaded(message.id, uploadTime)
-                                Log.d(TAG, "Message ${message.messageId} marked as uploaded")
-                            }
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e(TAG, "Failed to upload message ${message.messageId}", e)
-                        }
+                    // Create message data map
+                    val messageData = mapOf(
+                        "messageId" to message.messageId,
+                        "syncTimestamp" to message.syncTimestamp,
+                        "phoneNumber" to message.phoneNumber,
+                        "timestamp" to message.timestamp,
+                        "body" to (message.body ?: ""),
+                        "type" to message.type,
+                        "subject" to (message.subject ?: ""),
+                        "messageType" to message.messageType,
+                        "contactName" to (message.contactName ?: ""),
+                        "isRead" to message.isRead,
+                        "seen" to message.seen,
+                        "deliveryStatus" to (message.deliveryStatus ?: 0),
+                        "deviceId" to deviceId,
+                        "uploadedAt" to System.currentTimeMillis()
+                    )
+
+                    // Upload using new Firebase structure
+                    val success = FirebaseServiceHelper.uploadMessage(userEmail, deviceId, messageData)
+
+                    if (success) {
+                        val uploadTime = System.currentTimeMillis()
+                        db.messageDao().markMessageAsUploaded(message.id, uploadTime)
+                        successCount++
+                        Log.d(TAG, "Message ${message.messageId} uploaded successfully")
+                    } else {
+                        Log.w(TAG, "Failed to upload message ${message.messageId}")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error uploading message ${message.messageId}", e)
-                    // Continue with next record
                 }
             }
+
+            return successCount
         } catch (e: Exception) {
             Log.e(TAG, "Error in uploadNewRecords", e)
+            return 0
         }
     }
 }

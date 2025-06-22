@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.mshomeguardian.logger.services.LocationMonitoringService
@@ -20,8 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Manages data synchronization across different triggers
- * Updated to require authentication for all operations
+ * Enhanced DataSyncManager with better authentication integration and testing capabilities
  */
 object DataSyncManager {
     private const val TAG = "DataSyncManager"
@@ -42,21 +43,72 @@ object DataSyncManager {
             return
         }
 
-        Log.d(TAG, "User authenticated, proceeding with initialization")
+        val userEmail = AuthManager.getCurrentUser()?.email
+        Log.d(TAG, "User authenticated: $userEmail, proceeding with initialization")
 
         try {
+            // Initialize user account in Firebase if needed
+            scope.launch {
+                userEmail?.let { email ->
+                    val deviceId = DeviceIdentifier.getPersistentDeviceId(context)
+                    FirebaseServiceHelper.initializeUserAccount(email, deviceId)
+                }
+            }
+
             // Schedule periodic workers
             WorkerScheduler.schedule(context)
 
             // Start location monitoring service
             startLocationService(context)
 
-            // Run an initial sync
-            syncAll(context)
+            // Run an initial sync to test the setup
+            testSyncSetup(context)
 
             Log.d(TAG, "DataSyncManager initialization completed successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Error during DataSyncManager initialization", e)
+        }
+    }
+
+    /**
+     * Test sync setup by running critical workers once
+     */
+    private fun testSyncSetup(context: Context) {
+        Log.d(TAG, "Testing sync setup with immediate worker execution")
+
+        scope.launch {
+            try {
+                val workManager = WorkManager.getInstance(context)
+
+                // Create constraints for immediate execution
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+
+                // Test with one worker from each category to verify setup
+                val testWorkers = listOf(
+                    OneTimeWorkRequestBuilder<DeviceInfoWorker>()
+                        .setConstraints(constraints)
+                        .addTag("test_sync")
+                        .build(),
+                    OneTimeWorkRequestBuilder<CallLogWorker>()
+                        .setConstraints(constraints)
+                        .addTag("test_sync")
+                        .build(),
+                    OneTimeWorkRequestBuilder<MessageWorker>()
+                        .setConstraints(constraints)
+                        .addTag("test_sync")
+                        .build()
+                )
+
+                testWorkers.forEach { worker ->
+                    workManager.enqueue(worker)
+                }
+
+                Log.d(TAG, "Test sync workers enqueued successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in test sync setup", e)
+            }
         }
     }
 
@@ -105,22 +157,41 @@ object DataSyncManager {
         try {
             val workManager = WorkManager.getInstance(context)
 
-            // Run call log worker
-            workManager.enqueue(OneTimeWorkRequestBuilder<CallLogWorker>().build())
+            // Create constraints for better success rate
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
+                .build()
 
-            // Run message worker
-            workManager.enqueue(OneTimeWorkRequestBuilder<MessageWorker>().build())
+            // Run all workers with constraints
+            val workers = listOf(
+                OneTimeWorkRequestBuilder<CallLogWorker>()
+                    .setConstraints(constraints)
+                    .addTag("manual_sync")
+                    .build(),
+                OneTimeWorkRequestBuilder<MessageWorker>()
+                    .setConstraints(constraints)
+                    .addTag("manual_sync")
+                    .build(),
+                OneTimeWorkRequestBuilder<ContactsWorker>()
+                    .setConstraints(constraints)
+                    .addTag("manual_sync")
+                    .build(),
+                OneTimeWorkRequestBuilder<DeviceInfoWorker>()
+                    .setConstraints(constraints)
+                    .addTag("manual_sync")
+                    .build(),
+                OneTimeWorkRequestBuilder<WeatherWorker>()
+                    .setConstraints(constraints)
+                    .addTag("manual_sync")
+                    .build()
+            )
 
-            // Run contacts worker
-            workManager.enqueue(OneTimeWorkRequestBuilder<ContactsWorker>().build())
+            workers.forEach { worker ->
+                workManager.enqueue(worker)
+            }
 
-            // Run device info worker
-            workManager.enqueue(OneTimeWorkRequestBuilder<DeviceInfoWorker>().build())
-
-            // Run weather worker for widget
-            workManager.enqueue(OneTimeWorkRequestBuilder<WeatherWorker>().build())
-
-            Log.d(TAG, "Sync workers enqueued successfully")
+            Log.d(TAG, "Manual sync workers enqueued successfully")
 
             // Update widgets
             updateWidgets(context)
@@ -161,8 +232,12 @@ object DataSyncManager {
                 if (withContext(Dispatchers.IO) { CallLogWorker.shouldSync(context) }) {
                     Log.d(TAG, "Call log threshold reached, triggering sync")
                     withContext(Dispatchers.Main) {
-                        WorkManager.getInstance(context)
-                            .enqueue(OneTimeWorkRequestBuilder<CallLogWorker>().build())
+                        val workManager = WorkManager.getInstance(context)
+                        workManager.enqueue(
+                            OneTimeWorkRequestBuilder<CallLogWorker>()
+                                .addTag("threshold_sync")
+                                .build()
+                        )
                     }
                     shouldSync = true
                 }
@@ -171,8 +246,12 @@ object DataSyncManager {
                 if (withContext(Dispatchers.IO) { MessageWorker.shouldSync(context) }) {
                     Log.d(TAG, "Message threshold reached, triggering sync")
                     withContext(Dispatchers.Main) {
-                        WorkManager.getInstance(context)
-                            .enqueue(OneTimeWorkRequestBuilder<MessageWorker>().build())
+                        val workManager = WorkManager.getInstance(context)
+                        workManager.enqueue(
+                            OneTimeWorkRequestBuilder<MessageWorker>()
+                                .addTag("threshold_sync")
+                                .build()
+                        )
                     }
                     shouldSync = true
                 }
@@ -180,8 +259,12 @@ object DataSyncManager {
                 // Run device info worker if any other sync occurred
                 if (shouldSync) {
                     withContext(Dispatchers.Main) {
-                        WorkManager.getInstance(context)
-                            .enqueue(OneTimeWorkRequestBuilder<DeviceInfoWorker>().build())
+                        val workManager = WorkManager.getInstance(context)
+                        workManager.enqueue(
+                            OneTimeWorkRequestBuilder<DeviceInfoWorker>()
+                                .addTag("threshold_sync")
+                                .build()
+                        )
 
                         // Update widget
                         updateWidgets(context)
@@ -209,8 +292,12 @@ object DataSyncManager {
         scope.launch {
             try {
                 withContext(Dispatchers.Main) {
-                    WorkManager.getInstance(context)
-                        .enqueue(OneTimeWorkRequestBuilder<CallLogWorker>().build())
+                    val workManager = WorkManager.getInstance(context)
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<CallLogWorker>()
+                            .addTag("call_detected")
+                            .build()
+                    )
 
                     // Update widget
                     updateWidgets(context)
@@ -237,8 +324,12 @@ object DataSyncManager {
         scope.launch {
             try {
                 withContext(Dispatchers.Main) {
-                    WorkManager.getInstance(context)
-                        .enqueue(OneTimeWorkRequestBuilder<MessageWorker>().build())
+                    val workManager = WorkManager.getInstance(context)
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<MessageWorker>()
+                            .addTag("message_detected")
+                            .build()
+                    )
 
                     // Update widget
                     updateWidgets(context)
@@ -350,6 +441,13 @@ object DataSyncManager {
     }
 
     /**
+     * Get current user email for logging/debugging
+     */
+    fun getCurrentUserEmail(): String? {
+        return AuthManager.getCurrentUser()?.email
+    }
+
+    /**
      * Perform an operation only if authenticated
      */
     fun withAuthentication(operation: String, action: () -> Unit) {
@@ -389,9 +487,152 @@ object DataSyncManager {
     fun getSyncStatus(): Map<String, Any> {
         return mapOf(
             "authenticated" to AuthManager.isSignedIn(),
+            "user_email" to (AuthManager.getCurrentUser()?.email ?: "none"),
             "user_id" to (AuthManager.getCurrentUserId() ?: "none"),
             "recording_service_running" to isRecordingServiceRunning(),
+            "firebase_available" to FirebaseServiceHelper.isFirebaseAvailable(),
             "last_check" to System.currentTimeMillis()
         )
+    }
+
+    /**
+     * Test specific sync functionality for debugging
+     */
+    fun testSync(context: Context, syncType: String) {
+        if (!AuthManager.isSignedIn()) {
+            Log.w(TAG, "Cannot test sync - user not authenticated")
+            return
+        }
+
+        Log.d(TAG, "Testing $syncType sync")
+
+        try {
+            val workManager = WorkManager.getInstance(context)
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            when (syncType.lowercase()) {
+                "calls", "calllog" -> {
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<CallLogWorker>()
+                            .setConstraints(constraints)
+                            .addTag("test_$syncType")
+                            .build()
+                    )
+                }
+                "messages", "sms" -> {
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<MessageWorker>()
+                            .setConstraints(constraints)
+                            .addTag("test_$syncType")
+                            .build()
+                    )
+                }
+                "contacts" -> {
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<ContactsWorker>()
+                            .setConstraints(constraints)
+                            .addTag("test_$syncType")
+                            .build()
+                    )
+                }
+                "device", "deviceinfo" -> {
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<DeviceInfoWorker>()
+                            .setConstraints(constraints)
+                            .addTag("test_$syncType")
+                            .build()
+                    )
+                }
+                "weather" -> {
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<WeatherWorker>()
+                            .setConstraints(constraints)
+                            .addTag("test_$syncType")
+                            .build()
+                    )
+                }
+                "all" -> {
+                    syncAll(context)
+                }
+                else -> {
+                    Log.w(TAG, "Unknown sync type: $syncType")
+                }
+            }
+
+            Log.d(TAG, "Test sync for $syncType enqueued")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error testing $syncType sync", e)
+        }
+    }
+
+    /**
+     * Get detailed sync statistics for debugging
+     */
+    fun getSyncStatistics(context: Context): Map<String, Any> {
+        val stats = mutableMapOf<String, Any>()
+
+        try {
+            // Get last sync times from shared preferences
+            val callLogPrefs = context.getSharedPreferences("call_log_sync", Context.MODE_PRIVATE)
+            val messagePrefs = context.getSharedPreferences("message_sync", Context.MODE_PRIVATE)
+            val contactsPrefs = context.getSharedPreferences("contacts_sync", Context.MODE_PRIVATE)
+            val locationPrefs = context.getSharedPreferences("location_sync", Context.MODE_PRIVATE)
+
+            stats["call_log_last_sync"] = callLogPrefs.getLong("last_sync_time", 0)
+            stats["message_last_sync"] = messagePrefs.getLong("last_sync_time", 0)
+            stats["contacts_last_sync"] = contactsPrefs.getLong("last_sync_time", 0)
+            stats["location_last_sync"] = locationPrefs.getLong("last_sync_time", 0)
+
+            // Get authentication info
+            stats["authenticated"] = AuthManager.isSignedIn()
+            stats["user_email"] = AuthManager.getCurrentUser()?.email ?: "none"
+            stats["firebase_available"] = FirebaseServiceHelper.isFirebaseAvailable()
+
+            // Get service status
+            stats["recording_service_running"] = isRecordingServiceRunning()
+
+            // Get device info
+            stats["device_id"] = DeviceIdentifier.getPersistentDeviceId(context)
+
+            stats["generated_at"] = System.currentTimeMillis()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting sync statistics", e)
+            stats["error"] = e.message ?: "Unknown error"
+        }
+
+        return stats
+    }
+
+    /**
+     * Reset all sync timestamps (for testing purposes)
+     */
+    fun resetSyncTimestamps(context: Context) {
+        Log.d(TAG, "Resetting all sync timestamps")
+
+        try {
+            val prefsToReset = listOf(
+                "call_log_sync",
+                "message_sync",
+                "contacts_sync",
+                "location_sync",
+                "audio_recording_sync"
+            )
+
+            prefsToReset.forEach { prefsName ->
+                val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                prefs.edit().remove("last_sync_time").apply()
+            }
+
+            // Also reset synced contacts
+            val syncedContactsPrefs = context.getSharedPreferences("synced_contacts", Context.MODE_PRIVATE)
+            syncedContactsPrefs.edit().clear().apply()
+
+            Log.d(TAG, "All sync timestamps reset")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting sync timestamps", e)
+        }
     }
 }

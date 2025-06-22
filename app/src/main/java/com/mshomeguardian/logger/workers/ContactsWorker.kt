@@ -9,11 +9,10 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
+import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.*
 
@@ -24,13 +23,6 @@ class ContactsWorker(
 
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
-    private val firestore: FirebaseFirestore? = try {
-        FirebaseFirestore.getInstance()
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firestore", e)
-        null
-    }
-
     companion object {
         private const val TAG = "ContactsWorker"
         private const val SYNC_LIMIT = 50 // Reduced to avoid excessive processing
@@ -38,6 +30,13 @@ class ContactsWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
+            // Check authentication first
+            val userEmail = AuthManager.getCurrentUser()?.email
+            if (userEmail == null) {
+                Log.w(TAG, "User not authenticated, skipping contacts sync")
+                return@withContext Result.success()
+            }
+
             // Check permissions
             if (ContextCompat.checkSelfPermission(
                     applicationContext,
@@ -45,6 +44,12 @@ class ContactsWorker(
                 ) != PackageManager.PERMISSION_GRANTED) {
                 Log.e(TAG, "Missing READ_CONTACTS permission")
                 return@withContext Result.failure()
+            }
+
+            // Check if Firebase is available
+            if (!FirebaseServiceHelper.isFirebaseAvailable()) {
+                Log.w(TAG, "Firebase not available, skipping contacts sync")
+                return@withContext Result.success()
             }
 
             // Get last sync time from shared preferences
@@ -56,7 +61,7 @@ class ContactsWorker(
             val syncedContactIds = loadSyncedContactIds()
 
             // Sync contacts
-            val syncCount = syncContacts(lastSyncTime, currentTime, syncedContactIds)
+            val syncCount = syncContacts(userEmail, lastSyncTime, currentTime, syncedContactIds)
 
             // Update last sync time if successful
             prefs.edit().putLong("last_sync_time", currentTime).apply()
@@ -82,7 +87,12 @@ class ContactsWorker(
         prefs.edit().putStringSet("contact_ids", newContactIds).apply()
     }
 
-    private suspend fun syncContacts(lastSyncTime: Long, currentTime: Long, syncedContactIds: Set<String>): Int {
+    private suspend fun syncContacts(
+        userEmail: String,
+        lastSyncTime: Long,
+        currentTime: Long,
+        syncedContactIds: Set<String>
+    ): Int {
         var syncCount = 0
         var cursor: Cursor? = null
 
@@ -95,7 +105,7 @@ class ContactsWorker(
                 ContactsContract.Contacts.HAS_PHONE_NUMBER,
                 ContactsContract.Contacts.PHOTO_URI,
                 ContactsContract.Contacts.LAST_TIME_CONTACTED,
-                ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP // This may not be available on all Android versions
+                ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP
             )
 
             // Try to use the CONTACT_LAST_UPDATED_TIMESTAMP column to get only updated contacts
@@ -140,9 +150,9 @@ class ContactsWorker(
 
                     val contactId = it.getString(idIndex)
 
-                    // Skip contacts we've already synced
+                    // Skip contacts we've already synced (if we're not using timestamp-based filtering)
                     if (selection == null && syncedContactIds.contains(contactId)) {
-                        continue // Skip already synced contacts
+                        continue
                     }
 
                     val contactName = if (nameIndex >= 0 && !it.isNull(nameIndex)) it.getString(nameIndex) else "Unknown"
@@ -156,23 +166,29 @@ class ContactsWorker(
                     // Get emails for this contact
                     val emails = getEmails(contactId)
 
-                    // Create contact map for Firestore
-                    val contactMap = HashMap<String, Any>()
-                    contactMap["contactId"] = contactId
-                    contactMap["displayName"] = contactName
-                    contactMap["phoneNumbers"] = phoneNumbers
-                    contactMap["emails"] = emails
-                    contactMap["photoUri"] = photoUri ?: ""
-                    contactMap["lastContactedTimestamp"] = lastContacted
-                    contactMap["syncTimestamp"] = currentTime
-                    contactMap["deviceId"] = deviceId
+                    // Create contact map for Firebase
+                    val contactData = mapOf(
+                        "contactId" to contactId,
+                        "displayName" to contactName,
+                        "phoneNumbers" to phoneNumbers,
+                        "emails" to emails,
+                        "photoUri" to (photoUri ?: ""),
+                        "lastContactedTimestamp" to lastContacted,
+                        "syncTimestamp" to currentTime,
+                        "deviceId" to deviceId
+                    )
 
-                    // Upload to Firestore - but only insert, no updates (to prevent deleting contacts)
+                    // Upload to Firebase using new structure
                     try {
-                        uploadContact(contactId, contactMap)
-                        // Mark this contact as synced
-                        saveSyncedContactId(contactId)
-                        syncCount++
+                        val success = FirebaseServiceHelper.uploadContact(userEmail, deviceId, contactData)
+                        if (success) {
+                            // Mark this contact as synced
+                            saveSyncedContactId(contactId)
+                            syncCount++
+                            Log.d(TAG, "Contact $contactId uploaded successfully")
+                        } else {
+                            Log.w(TAG, "Failed to upload contact $contactId")
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error uploading contact $contactId: ${e.message}")
                     }
@@ -187,6 +203,7 @@ class ContactsWorker(
             cursor?.close()
         }
     }
+
     private fun getPhoneNumbers(contactId: String): List<Map<String, String>> {
         val phoneList = mutableListOf<Map<String, String>>()
         var phoneCursor: Cursor? = null
@@ -209,7 +226,6 @@ class ContactsWorker(
                 val typeIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE)
 
                 while (it.moveToNext()) {
-                    // Added null checks
                     val phoneNumber = if (numberIndex >= 0 && !it.isNull(numberIndex)) it.getString(numberIndex) else ""
                     val phoneType = if (typeIndex >= 0 && !it.isNull(typeIndex)) {
                         val type = it.getInt(typeIndex)
@@ -218,9 +234,10 @@ class ContactsWorker(
                         ).toString()
                     } else "Other"
 
-                    val phoneMap = HashMap<String, String>()
-                    phoneMap["number"] = phoneNumber
-                    phoneMap["type"] = phoneType
+                    val phoneMap = mapOf(
+                        "number" to phoneNumber,
+                        "type" to phoneType
+                    )
                     phoneList.add(phoneMap)
                 }
             }
@@ -255,7 +272,6 @@ class ContactsWorker(
                 val typeIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Email.TYPE)
 
                 while (it.moveToNext()) {
-                    // Added null checks
                     val emailAddress = if (addressIndex >= 0 && !it.isNull(addressIndex)) it.getString(addressIndex) else ""
                     val emailType = if (typeIndex >= 0 && !it.isNull(typeIndex)) {
                         val type = it.getInt(typeIndex)
@@ -264,9 +280,10 @@ class ContactsWorker(
                         ).toString()
                     } else "Other"
 
-                    val emailMap = HashMap<String, String>()
-                    emailMap["address"] = emailAddress
-                    emailMap["type"] = emailType
+                    val emailMap = mapOf(
+                        "address" to emailAddress,
+                        "type" to emailType
+                    )
                     emailList.add(emailMap)
                 }
             }
@@ -277,23 +294,5 @@ class ContactsWorker(
         }
 
         return emailList
-    }
-
-    private suspend fun uploadContact(contactId: String, contactMap: Map<String, Any>) {
-        val firestoreInstance = firestore ?: throw IllegalStateException("Firestore not initialized")
-
-        try {
-            firestoreInstance.collection("devices")
-                .document(deviceId)
-                .collection("contacts")
-                .document(contactId)
-                .set(contactMap, SetOptions.merge())
-                .await()
-
-            Log.d(TAG, "Contact $contactId uploaded to Firestore")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to upload contact $contactId", e)
-            throw e
-        }
     }
 }

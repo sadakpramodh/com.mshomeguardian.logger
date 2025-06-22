@@ -9,14 +9,12 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.CallLogEntity
+import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
 
@@ -28,18 +26,11 @@ class CallLogWorker(
     private val db = AppDatabase.getInstance(context.applicationContext)
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
-    private val firestore: FirebaseFirestore? = try {
-        FirebaseFirestore.getInstance()
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firestore", e)
-        null
-    }
-
     companion object {
         private const val TAG = "CallLogWorker"
-        private const val SYNC_LIMIT = 500 // Limit number of call logs to sync at once
+        private const val SYNC_LIMIT = 500
 
-        // New threshold for automatic synchronization
+        // Threshold for automatic synchronization
         private const val CALL_COUNT_THRESHOLD = 3
 
         /**
@@ -50,6 +41,11 @@ class CallLogWorker(
             if (ContextCompat.checkSelfPermission(
                     context, Manifest.permission.READ_CALL_LOG
                 ) != PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
+
+            // Skip if user not authenticated
+            if (!AuthManager.isSignedIn()) {
                 return false
             }
 
@@ -81,6 +77,13 @@ class CallLogWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
+            // Check authentication first
+            val userEmail = AuthManager.getCurrentUser()?.email
+            if (userEmail == null) {
+                Log.w(TAG, "User not authenticated, skipping call log sync")
+                return@withContext Result.success()
+            }
+
             // Check permissions
             if (ContextCompat.checkSelfPermission(
                     applicationContext,
@@ -88,6 +91,12 @@ class CallLogWorker(
                 ) != PackageManager.PERMISSION_GRANTED) {
                 Log.e(TAG, "Missing READ_CALL_LOG permission")
                 return@withContext Result.failure()
+            }
+
+            // Check if Firebase is available
+            if (!FirebaseServiceHelper.isFirebaseAvailable()) {
+                Log.w(TAG, "Firebase not available, skipping call log sync")
+                return@withContext Result.success()
             }
 
             // Get last sync time from shared preferences
@@ -98,13 +107,13 @@ class CallLogWorker(
             // Sync call logs
             val syncCount = syncCallLogs(lastSyncTime, currentTime)
 
-            // Upload new records to Firestore
-            uploadNewRecords()
+            // Upload new records to Firebase using new structure
+            val uploadCount = uploadNewRecords(userEmail)
 
             // Update last sync time if successful
             prefs.edit().putLong("last_sync_time", currentTime).apply()
 
-            Log.d(TAG, "Call log sync completed. Synced $syncCount records.")
+            Log.d(TAG, "Call log sync completed. Synced $syncCount records, uploaded $uploadCount to Firebase.")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing call logs", e)
@@ -112,7 +121,6 @@ class CallLogWorker(
         }
     }
 
-    // Update the syncCallLogs method to fix the LIMIT issue
     private suspend fun syncCallLogs(lastSyncTime: Long, currentTime: Long): Int {
         val callLogs = mutableListOf<CallLogEntity>()
         var cursor: Cursor? = null
@@ -134,10 +142,8 @@ class CallLogWorker(
                 CallLog.Calls.IS_READ
             )
 
-            // Selection for calls after the last sync time
             val selection = "${CallLog.Calls.DATE} > ?"
             val selectionArgs = arrayOf(lastSyncTime.toString())
-            // Remove LIMIT from sortOrder
             val sortOrder = "${CallLog.Calls.DATE} DESC"
 
             cursor = applicationContext.contentResolver.query(
@@ -155,7 +161,6 @@ class CallLogWorker(
                 val photoUriIndex = it.getColumnIndex(CallLog.Calls.CACHED_PHOTO_URI)
                 val isReadIndex = it.getColumnIndex(CallLog.Calls.IS_READ)
 
-                // Add counter to limit records processed
                 var recordsProcessed = 0
 
                 while (it.moveToNext() && recordsProcessed < SYNC_LIMIT) {
@@ -169,7 +174,6 @@ class CallLogWorker(
                     val photoUri = if (photoUriIndex >= 0) it.getString(photoUriIndex) else null
                     val isRead = if (isReadIndex >= 0) it.getInt(isReadIndex) == 1 else false
 
-                    // Create call log entity
                     val callLogEntity = CallLogEntity(
                         callId = callId,
                         syncTimestamp = currentTime,
@@ -186,17 +190,14 @@ class CallLogWorker(
                         deviceId = deviceId
                     )
 
-                    // Check if call log already exists
                     val existingCallLog = db.callLogDao().getCallLogByCallId(callId)
                     if (existingCallLog == null) {
                         callLogs.add(callLogEntity)
                     } else {
-                        // Update only if something changed
                         if (existingCallLog.isRead != isRead ||
                             existingCallLog.duration != duration ||
                             existingCallLog.contactName != name) {
 
-                            // Keep existing flags
                             db.callLogDao().updateCallLog(callLogEntity.copy(
                                 id = existingCallLog.id,
                                 uploadedToCloud = existingCallLog.uploadedToCloud,
@@ -209,7 +210,6 @@ class CallLogWorker(
                 }
             }
 
-            // Insert all new call logs
             if (callLogs.isNotEmpty()) {
                 db.callLogDao().insertCallLogs(callLogs)
                 Log.d(TAG, "Inserted ${callLogs.size} new call logs")
@@ -224,41 +224,51 @@ class CallLogWorker(
         }
     }
 
-
-    private suspend fun uploadNewRecords() {
-        val firestoreInstance = firestore ?: return
-
+    private suspend fun uploadNewRecords(userEmail: String): Int {
         try {
-            // Get call logs that haven't been uploaded
             val notUploadedCallLogs = db.callLogDao().getNotUploadedCallLogs()
             Log.d(TAG, "Found ${notUploadedCallLogs.size} call logs to upload")
 
+            var successCount = 0
+
             for (callLog in notUploadedCallLogs) {
                 try {
-                    // Upload to Firestore
-                    firestoreInstance.collection("devices")
-                        .document(deviceId)
-                        .collection("call_logs")
-                        .document(callLog.callId)
-                        .set(callLog, SetOptions.merge())
-                        .addOnSuccessListener {
-                            // Mark as uploaded in a separate coroutine to avoid blocking
-                            GlobalScope.launch(Dispatchers.IO) {
-                                val uploadTime = System.currentTimeMillis()
-                                db.callLogDao().markCallLogAsUploaded(callLog.id, uploadTime)
-                                Log.d(TAG, "Call log ${callLog.callId} marked as uploaded")
-                            }
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e(TAG, "Failed to upload call log ${callLog.callId}", e)
-                        }
+                    // Create call log data map
+                    val callLogData = mapOf(
+                        "callId" to callLog.callId,
+                        "syncTimestamp" to callLog.syncTimestamp,
+                        "phoneNumber" to callLog.phoneNumber,
+                        "timestamp" to callLog.timestamp,
+                        "duration" to callLog.duration,
+                        "type" to callLog.type,
+                        "contactName" to (callLog.contactName ?: ""),
+                        "contactPhotoUri" to (callLog.contactPhotoUri ?: ""),
+                        "isRead" to callLog.isRead,
+                        "isNew" to callLog.isNew,
+                        "deviceId" to deviceId,
+                        "uploadedAt" to System.currentTimeMillis()
+                    )
+
+                    // Upload using new Firebase structure
+                    val success = FirebaseServiceHelper.uploadCallLog(userEmail, deviceId, callLogData)
+
+                    if (success) {
+                        val uploadTime = System.currentTimeMillis()
+                        db.callLogDao().markCallLogAsUploaded(callLog.id, uploadTime)
+                        successCount++
+                        Log.d(TAG, "Call log ${callLog.callId} uploaded successfully")
+                    } else {
+                        Log.w(TAG, "Failed to upload call log ${callLog.callId}")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error uploading call log ${callLog.callId}", e)
-                    // Continue with next record
                 }
             }
+
+            return successCount
         } catch (e: Exception) {
             Log.e(TAG, "Error in uploadNewRecords", e)
+            return 0
         }
     }
 }
