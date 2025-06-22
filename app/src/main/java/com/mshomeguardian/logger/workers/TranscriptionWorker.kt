@@ -7,6 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -109,26 +110,21 @@ class TranscriptionWorker(
                 "status" to "uploaded_without_transcription"
             )
 
-            // Upload to Firestore
-            val firestoreInstance = FirebaseFirestore.getInstance()
+            val userEmail = FirebaseServiceHelper.getCurrentUserEmail() ?: return false
             val documentId = fileName.substringBeforeLast(".")
 
             return withContext(Dispatchers.IO) {
-                try {
-                    // Add to Firestore
-                    firestoreInstance.collection("devices")
-                        .document(deviceId)
-                        .collection("audio_recordings")
-                        .document(documentId)
-                        .set(metadata)
-                        .await()
-
+                val success = FirebaseServiceHelper.uploadAudioRecording(
+                    userEmail,
+                    deviceId,
+                    metadata + ("recordingId" to documentId)
+                )
+                if (success) {
                     Log.d(TAG, "Audio metadata uploaded successfully")
-                    true
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error uploading audio metadata", e)
-                    false
+                } else {
+                    Log.e(TAG, "Error uploading audio metadata")
                 }
+                success
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error preparing metadata upload", e)
@@ -139,8 +135,12 @@ class TranscriptionWorker(
     private suspend fun uploadAudioFile(audioFile: File, deviceId: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val storageRef = FirebaseStorage.getInstance().reference
-                val audioRef = storageRef.child("devices/$deviceId/audio/${audioFile.name}")
+                val userEmail = FirebaseServiceHelper.getCurrentUserEmail() ?: return@withContext false
+                val audioRef = FirebaseServiceHelper.getAudioStorageReference(
+                    userEmail,
+                    deviceId,
+                    audioFile.name
+                ) ?: return@withContext false
 
                 val uploadTask = audioRef.putFile(android.net.Uri.fromFile(audioFile))
 

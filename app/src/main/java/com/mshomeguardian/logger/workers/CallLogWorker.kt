@@ -63,7 +63,12 @@ object FirebaseServiceHelper {
      * Sanitize email address for use as Firestore document ID
      * This must match exactly what you see in Firebase Console
      */
-    private fun sanitizeEmailForFirestore(email: String): String {
+    /**
+     * Sanitize an email address so it can be safely used as a Firestore
+     * document ID. This helper is public so workers can share the logic
+     * and remain consistent with the console structure.
+     */
+    fun sanitizeEmailForFirestore(email: String): String {
         return email.replace(".", "_dot_")
             .replace("@", "_at_")
             .replace("/", "_")

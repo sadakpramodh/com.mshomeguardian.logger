@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.data.AudioRecordingEntity
@@ -552,11 +553,17 @@ class AudioRecordingService : Service() {
                 return
             }
 
-            val storageRef = storageInstance.reference
-                .child("devices")
-                .child(deviceId)
-                .child("audio")
-                .child(recording.fileName)
+            val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
+            if (userEmail == null) {
+                OptimizedLogger.e(TAG, "No authenticated user for upload")
+                return
+            }
+
+            val storageRef = FirebaseServiceHelper.getAudioStorageReference(
+                userEmail,
+                deviceId,
+                recording.fileName
+            ) ?: return
 
             val uploadTask = storageRef.putFile(android.net.Uri.fromFile(file))
 
@@ -626,17 +633,26 @@ class AudioRecordingService : Service() {
                 "transcription" to recording.transcription
             )
 
-            firestoreInstance.collection("devices")
-                .document(deviceId)
-                .collection("audio_recordings")
-                .document(recording.recordingId)
-                .set(recordingData)
-                .addOnSuccessListener {
-                    OptimizedLogger.d(TAG, "Recording metadata stored in Firestore: ${recording.recordingId}")
-                }
-                .addOnFailureListener { e ->
-                    OptimizedLogger.e(TAG, "Error storing recording metadata in Firestore", e)
-                }
+            val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
+            if (userEmail == null) {
+                OptimizedLogger.e(TAG, "User not authenticated")
+                return
+            }
+
+            val success = FirebaseServiceHelper.uploadAudioRecording(
+                userEmail,
+                deviceId,
+                recordingData
+            )
+
+            if (success) {
+                OptimizedLogger.d(
+                    TAG,
+                    "Recording metadata stored in Firestore: ${recording.recordingId}"
+                )
+            } else {
+                OptimizedLogger.e(TAG, "Error storing recording metadata in Firestore")
+            }
         } catch (e: Exception) {
             OptimizedLogger.e(TAG, "Error in updateFirestoreWithRecordingMetadata", e)
         }

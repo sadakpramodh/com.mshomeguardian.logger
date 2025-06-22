@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.Dispatchers
@@ -54,8 +55,18 @@ class TranscriptionHistoryFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 val db = FirebaseFirestore.getInstance()
+                val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
+                if (userEmail == null) {
+                    Log.e("TranscriptionHistory", "User not authenticated")
+                    return@launch
+                }
+
+                val sanitizedEmail = FirebaseServiceHelper.sanitizeEmailForFirestore(userEmail)
+
                 val transcriptions = withContext(Dispatchers.IO) {
-                    db.collection("devices")
+                    db.collection("users")
+                        .document(sanitizedEmail)
+                        .collection("devices")
                         .document(deviceId)
                         .collection("transcripts")
                         .orderBy("timestamp", Query.Direction.DESCENDING)
