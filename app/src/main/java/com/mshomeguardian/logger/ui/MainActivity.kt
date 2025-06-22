@@ -19,7 +19,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.firebase.ui.auth.AuthUI
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.utils.AuthManager
@@ -42,7 +41,7 @@ import java.util.concurrent.TimeUnit
 import com.mshomeguardian.logger.utils.OptimizedLogger
 
 /**
- * Simplified MainActivity with only FirebaseUI authentication
+ * MainActivity with custom authentication (no FirebaseUI dependency)
  */
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
@@ -267,19 +266,15 @@ class MainActivity : AppCompatActivity() {
             // Stop all services first
             DataSyncManager.stopAllServices(applicationContext)
 
-            // Sign out using FirebaseUI
-            AuthUI.getInstance()
-                .signOut(this)
-                .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        OptimizedLogger.d(TAG, "User signed out successfully")
-                        Toast.makeText(this, "Signed out successfully", Toast.LENGTH_SHORT).show()
-                        startSignInActivity()
-                    } else {
-                        OptimizedLogger.e(TAG, "Error signing out", task.exception)
-                        Toast.makeText(this, "Error signing out", Toast.LENGTH_SHORT).show()
-                    }
-                }
+            // Sign out using custom AuthManager
+            AuthManager.signOut()
+
+            // Clear saved credentials
+            AuthManager.clearSavedCredentials(this)
+
+            OptimizedLogger.d(TAG, "User signed out successfully")
+            Toast.makeText(this, "Signed out successfully", Toast.LENGTH_SHORT).show()
+            startSignInActivity()
         }
     }
 

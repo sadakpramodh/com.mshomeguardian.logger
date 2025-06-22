@@ -12,6 +12,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -19,9 +20,12 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.utils.AuthManager
+import com.mshomeguardian.logger.utils.AuthResult
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
+import kotlinx.coroutines.launch
 
 /**
- * Custom authentication activity that properly handles sign-in vs sign-up flow
+ * Custom authentication activity without FirebaseUI dependency
  */
 class SignInActivity : AppCompatActivity() {
 
@@ -38,13 +42,11 @@ class SignInActivity : AppCompatActivity() {
     private lateinit var titleText: TextView
     private lateinit var subtitleText: TextView
 
-    private val auth = FirebaseAuth.getInstance()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Check if user is already signed in
-        val currentUser = auth.currentUser
+        val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser != null) {
             Log.d(TAG, "User already signed in: ${currentUser.email}")
             startMainActivity()
@@ -54,6 +56,9 @@ class SignInActivity : AppCompatActivity() {
         setContentView(R.layout.activity_signin)
         initializeViews()
         setupClickListeners()
+
+        // Try auto sign-in if credentials are saved
+        tryAutoSignIn()
     }
 
     private fun initializeViews() {
@@ -87,6 +92,22 @@ class SignInActivity : AppCompatActivity() {
         }
     }
 
+    private fun tryAutoSignIn() {
+        lifecycleScope.launch {
+            try {
+                val result = AuthManager.attemptAutoSignIn(this@SignInActivity)
+                if (result is AuthResult.Success) {
+                    Log.d(TAG, "Auto sign-in successful")
+                    startMainActivity()
+                } else {
+                    Log.d(TAG, "Auto sign-in failed or no saved credentials")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during auto sign-in", e)
+            }
+        }
+    }
+
     private fun handleSignIn() {
         val email = emailEditText.text.toString().trim()
         val password = passwordEditText.text.toString().trim()
@@ -97,43 +118,40 @@ class SignInActivity : AppCompatActivity() {
 
         setLoadingState(true)
 
-        auth.signInWithEmailAndPassword(email, password)
-            .addOnCompleteListener(this) { task ->
-                setLoadingState(false)
+        lifecycleScope.launch {
+            try {
+                val result = AuthManager.signInWithEmailAndPassword(email, password)
 
-                if (task.isSuccessful) {
-                    // Sign in success
-                    Log.d(TAG, "signInWithEmail:success")
-                    val user = auth.currentUser
+                when (result) {
+                    is AuthResult.Success -> {
+                        Log.d(TAG, "Sign in successful")
 
-                    // Save credentials for future auto sign-in
-                    AuthManager.saveCredentials(this, email, password)
+                        // Save credentials for future auto sign-in
+                        AuthManager.saveCredentials(this@SignInActivity, email, password)
 
-                    Toast.makeText(this, "Welcome back!", Toast.LENGTH_SHORT).show()
-                    startMainActivity()
-                } else {
-                    // Sign in failed
-                    val exception = task.exception
-                    Log.w(TAG, "signInWithEmail:failure", exception)
-
-                    when (exception) {
-                        is FirebaseAuthInvalidUserException -> {
-                            // User doesn't exist
-                            showError("No account found with this email. Please create an account first.")
-                            highlightCreateAccountButton()
+                        // Initialize user account in Firestore
+                        result.user?.email?.let { userEmail ->
+                            FirebaseServiceHelper.initializeUserAccount(
+                                userEmail,
+                                com.mshomeguardian.logger.utils.DeviceIdentifier.getPersistentDeviceId(applicationContext)
+                            )
                         }
-                        is FirebaseAuthInvalidCredentialsException -> {
-                            // Wrong password
-                            showError("Incorrect password. Please try again or reset your password.")
-                            passwordEditText.error = "Incorrect password"
-                            passwordEditText.requestFocus()
-                        }
-                        else -> {
-                            showError("Sign in failed: ${exception?.message}")
-                        }
+
+                        Toast.makeText(this@SignInActivity, "Welcome back!", Toast.LENGTH_SHORT).show()
+                        startMainActivity()
+                    }
+                    is AuthResult.Error -> {
+                        Log.w(TAG, "Sign in failed: ${result.message}")
+                        handleAuthError(result.message)
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during sign in", e)
+                showError("Sign in failed: ${e.message}")
+            } finally {
+                setLoadingState(false)
             }
+        }
     }
 
     private fun handleCreateAccount() {
@@ -152,43 +170,40 @@ class SignInActivity : AppCompatActivity() {
 
         setLoadingState(true)
 
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnCompleteListener(this) { task ->
-                setLoadingState(false)
+        lifecycleScope.launch {
+            try {
+                val result = AuthManager.createUserWithEmailAndPassword(email, password)
 
-                if (task.isSuccessful) {
-                    // Account creation success
-                    Log.d(TAG, "createUserWithEmail:success")
-                    val user = auth.currentUser
+                when (result) {
+                    is AuthResult.Success -> {
+                        Log.d(TAG, "Account creation successful")
 
-                    // Save credentials for future auto sign-in
-                    AuthManager.saveCredentials(this, email, password)
+                        // Save credentials for future auto sign-in
+                        AuthManager.saveCredentials(this@SignInActivity, email, password)
 
-                    Toast.makeText(this, "Account created successfully! Welcome!", Toast.LENGTH_SHORT).show()
-                    startMainActivity()
-                } else {
-                    // Account creation failed
-                    val exception = task.exception
-                    Log.w(TAG, "createUserWithEmail:failure", exception)
-
-                    when (exception) {
-                        is FirebaseAuthUserCollisionException -> {
-                            // Email already exists
-                            showError("An account with this email already exists. Please sign in instead.")
-                            highlightSignInButton()
+                        // Initialize user account in Firestore
+                        result.user?.email?.let { userEmail ->
+                            FirebaseServiceHelper.initializeUserAccount(
+                                userEmail,
+                                com.mshomeguardian.logger.utils.DeviceIdentifier.getPersistentDeviceId(applicationContext)
+                            )
                         }
-                        is FirebaseAuthWeakPasswordException -> {
-                            // Weak password
-                            showError("Password is too weak. Please choose a stronger password.")
-                            passwordEditText.error = "Password too weak"
-                            passwordEditText.requestFocus()
-                        }
-                        else -> {
-                            showError("Account creation failed: ${exception?.message}")
-                        }
+
+                        Toast.makeText(this@SignInActivity, "Account created successfully! Welcome!", Toast.LENGTH_SHORT).show()
+                        startMainActivity()
+                    }
+                    is AuthResult.Error -> {
+                        Log.w(TAG, "Account creation failed: ${result.message}")
+                        handleAuthError(result.message)
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during account creation", e)
+                showError("Account creation failed: ${e.message}")
+            } finally {
+                setLoadingState(false)
             }
+        }
     }
 
     private fun handleForgotPassword() {
@@ -208,30 +223,56 @@ class SignInActivity : AppCompatActivity() {
 
         setLoadingState(true)
 
-        auth.sendPasswordResetEmail(email)
-            .addOnCompleteListener { task ->
-                setLoadingState(false)
+        lifecycleScope.launch {
+            try {
+                val result = AuthManager.sendPasswordResetEmail(email)
 
-                if (task.isSuccessful) {
-                    Toast.makeText(
-                        this,
-                        "Password reset email sent to $email. Check your inbox.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                } else {
-                    val exception = task.exception
-                    Log.w(TAG, "sendPasswordResetEmail:failure", exception)
-
-                    when (exception) {
-                        is FirebaseAuthInvalidUserException -> {
-                            showError("No account found with this email address.")
-                        }
-                        else -> {
-                            showError("Failed to send reset email: ${exception?.message}")
-                        }
+                when (result) {
+                    is AuthResult.Success -> {
+                        Toast.makeText(
+                            this@SignInActivity,
+                            "Password reset email sent to $email. Check your inbox.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    is AuthResult.Error -> {
+                        handleAuthError(result.message)
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending password reset email", e)
+                showError("Failed to send reset email: ${e.message}")
+            } finally {
+                setLoadingState(false)
             }
+        }
+    }
+
+    private fun handleAuthError(message: String) {
+        when {
+            message.contains("user", ignoreCase = true) &&
+                    message.contains("not", ignoreCase = true) -> {
+                showError("No account found with this email. Please create an account first.")
+                highlightCreateAccountButton()
+            }
+            message.contains("password", ignoreCase = true) -> {
+                showError("Incorrect password. Please try again or reset your password.")
+                passwordEditText.error = "Incorrect password"
+                passwordEditText.requestFocus()
+            }
+            message.contains("already", ignoreCase = true) -> {
+                showError("An account with this email already exists. Please sign in instead.")
+                highlightSignInButton()
+            }
+            message.contains("weak", ignoreCase = true) -> {
+                showError("Password is too weak. Please choose a stronger password.")
+                passwordEditText.error = "Password too weak"
+                passwordEditText.requestFocus()
+            }
+            else -> {
+                showError("Authentication failed: $message")
+            }
+        }
     }
 
     private fun validateInput(email: String, password: String): Boolean {
@@ -278,13 +319,11 @@ class SignInActivity : AppCompatActivity() {
     }
 
     private fun highlightSignInButton() {
-        // Highlight the sign in button to guide user
         signInButton.requestFocus()
         subtitleText.text = "This email is already registered. Please sign in with your password."
     }
 
     private fun highlightCreateAccountButton() {
-        // Highlight the create account button to guide user
         createAccountButton.requestFocus()
         subtitleText.text = "No account found. Please create a new account with this email."
     }
