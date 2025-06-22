@@ -7,6 +7,7 @@ import android.os.Build
 import android.util.Log
 import com.mshomeguardian.logger.workers.WorkerScheduler
 import com.mshomeguardian.logger.utils.AuthManager
+import com.mshomeguardian.logger.utils.LocationMonitoringService
 
 class BootReceiver : BroadcastReceiver() {
     companion object {

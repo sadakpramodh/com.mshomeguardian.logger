@@ -2,64 +2,62 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to get sanitized email from user email
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null && request.auth.token.email != null;
+    }
+    
+    // Helper function to sanitize email (must match your app's sanitization)
     function getSanitizedEmail(email) {
-      return email.replace('.', '_dot_').replace('@', '_at_').replace('/', '_').replace('[', '_').replace(']', '_').replace('*', '_').replace('?', '_');
+      return email.replace('.', '_dot_').replace('@', '_at_');
     }
     
-    // Helper function to check if user owns the data
-    function isOwner(userEmail) {
-      return request.auth != null && 
-             request.auth.token.email != null && 
-             getSanitizedEmail(request.auth.token.email) == userEmail;
+    // Helper function to check if user owns this email-based document
+    function isEmailOwner(sanitizedEmail) {
+      return isAuthenticated() && 
+             getSanitizedEmail(request.auth.token.email) == sanitizedEmail;
     }
     
-    // Allow authenticated users to access their own user document
-    match /users/{userEmail} {
-      allow read, write: if isOwner(userEmail);
+    // User-based structure: /users/{sanitized_email}/devices/{deviceId}/{collections}
+    match /users/{sanitizedEmail} {
+      allow read, write: if isEmailOwner(sanitizedEmail);
       
-      // Allow users to access their own devices
+      // Device level: /users/{sanitized_email}/devices/{deviceId}
       match /devices/{deviceId} {
-        allow read, write: if isOwner(userEmail);
+        allow read, write: if isEmailOwner(sanitizedEmail);
         
-        // Location data
-        match /locations/{locationId} {
-          allow read, write: if isOwner(userEmail);
+        // Collections under device: call_logs, contacts, messages, weather, etc.
+        match /call_logs/{document} {
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
         
-        // Call logs
-        match /call_logs/{callId} {
-          allow read, write: if isOwner(userEmail);
+        match /contacts/{document} {
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
         
-        // Messages
-        match /messages/{messageId} {
-          allow read, write: if isOwner(userEmail);
+        match /messages/{document} {
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
         
-        // Contacts
-        match /contacts/{contactId} {
-          allow read, write: if isOwner(userEmail);
+        match /weather/{document} {
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
         
-        // Audio recordings
-        match /audio_recordings/{recordingId} {
-          allow read, write: if isOwner(userEmail);
+        match /locations/{document} {
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
         
-        // Weather data
-        match /weather/{weatherId} {
-          allow read, write: if isOwner(userEmail);
+        match /audio_recordings/{document} {
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
         
-        // Phone state
-        match /phone_state/{stateId} {
-          allow read, write: if isOwner(userEmail);
+        match /phone_state/{document} {
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
         
-        // Any other subcollections under devices
+        // Allow any other collections under devices
         match /{collection}/{document} {
-          allow read, write: if isOwner(userEmail);
+          allow read, write: if isEmailOwner(sanitizedEmail);
         }
       }
     }

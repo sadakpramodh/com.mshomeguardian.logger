@@ -8,7 +8,7 @@ import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import com.mshomeguardian.logger.services.LocationMonitoringService
+import com.mshomeguardian.logger.utils.LocationMonitoringService
 import com.mshomeguardian.logger.services.AudioRecordingService
 import com.mshomeguardian.logger.workers.CallLogWorker
 import com.mshomeguardian.logger.workers.ContactsWorker

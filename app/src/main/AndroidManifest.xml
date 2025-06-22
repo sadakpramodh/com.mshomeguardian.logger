@@ -79,7 +79,7 @@
 
         <!-- Location monitoring service with proper foreground service type -->
         <service
-            android:name=".services.LocationMonitoringService"
+            android:name=".utils.LocationMonitoringService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location"

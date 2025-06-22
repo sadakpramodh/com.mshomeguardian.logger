@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.HashMap
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 
 class WeatherWorker(
     context: Context,

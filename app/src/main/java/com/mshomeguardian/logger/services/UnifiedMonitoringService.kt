@@ -1,532 +1,269 @@
-package com.mshomeguardian.logger.services
+package com.mshomeguardian.logger.workers
 
 import android.Manifest
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.location.Location
-import android.os.Build
-import android.os.IBinder
-import android.os.Looper
-import android.os.PowerManager
+import android.database.Cursor
+import android.provider.CallLog
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.work.Constraints
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.mshomeguardian.logger.R
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
 import com.mshomeguardian.logger.data.AppDatabase
-import com.mshomeguardian.logger.data.LocationEntity
-import com.mshomeguardian.logger.ui.MainActivity
+import com.mshomeguardian.logger.data.CallLogEntity
 import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
-import com.mshomeguardian.logger.utils.OptimizedLogger
-import com.mshomeguardian.logger.workers.CallLogWorker
-import com.mshomeguardian.logger.workers.ContactsWorker
-import com.mshomeguardian.logger.workers.DeviceInfoWorker
-import com.mshomeguardian.logger.workers.MessageWorker
-import com.mshomeguardian.logger.workers.WeatherWorker
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.TimeUnit
+import java.util.*
 
-/**
- * Unified service that handles both location monitoring and coordination with other services
- * Replaces separate LocationMonitoringService and provides centralized management
- */
-class UnifiedMonitoringService : Service() {
+class CallLogWorker(
+    context: Context,
+    params: WorkerParameters
+) : CoroutineWorker(context, params) {
+
+    private val db = AppDatabase.getInstance(context.applicationContext)
+    private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
     companion object {
-        private const val TAG = "UnifiedMonitoringService"
-        private const val NOTIFICATION_ID = 2001
-        private const val CHANNEL_ID = "unified_monitoring_channel"
+        private const val TAG = "CallLogWorker"
+        private const val SYNC_LIMIT = 500
+        private const val CALL_COUNT_THRESHOLD = 3
 
-        // Location settings
-        private const val DISTANCE_THRESHOLD_METERS = 1.0f
-        private val LOCATION_UPDATE_INTERVAL = TimeUnit.MINUTES.toMillis(15)
-        private val FASTEST_LOCATION_INTERVAL = TimeUnit.SECONDS.toMillis(30)
+        suspend fun shouldSync(context: Context): Boolean {
+            if (ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.READ_CALL_LOG
+                ) != PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
 
-        // Service actions
-        const val ACTION_START_MONITORING = "START_MONITORING"
-        const val ACTION_STOP_MONITORING = "STOP_MONITORING"
-        const val ACTION_START_AUDIO = "START_AUDIO"
-        const val ACTION_STOP_AUDIO = "STOP_AUDIO"
-
-        @Volatile
-        private var isServiceRunning = false
-
-        fun isRunning(): Boolean = isServiceRunning
-    }
-
-    // Core components
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationCallback: LocationCallback
-    private lateinit var db: AppDatabase
-    private lateinit var deviceId: String
-
-    // Location tracking
-    private var lastLocation: Location? = null
-    private var isLocationTracking = false
-
-    // Audio recording
-    private var isAudioRecording = false
-
-    // Power management
-    private var wakeLock: PowerManager.WakeLock? = null
-
-    override fun onCreate() {
-        super.onCreate()
-        OptimizedLogger.d(TAG, "UnifiedMonitoringService created")
-
-        try {
-            // Initialize core components
-            createNotificationChannel()
-            db = AppDatabase.getInstance(applicationContext)
-            deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
-            fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-
-            // Setup location callback
-            createLocationCallback()
-
-            OptimizedLogger.d(TAG, "Service initialization completed")
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error initializing service", e)
-        }
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        OptimizedLogger.d(TAG, "onStartCommand: ${intent?.action}")
-
-        try {
-            // Check authentication
             if (!AuthManager.isSignedIn()) {
-                OptimizedLogger.w(TAG, "User not authenticated - stopping service")
-                stopSelf()
-                return START_NOT_STICKY
+                return false
             }
 
-            when (intent?.action) {
-                ACTION_START_MONITORING -> {
-                    if (!isServiceRunning) {
-                        startForeground(NOTIFICATION_ID, createNotification())
-                        acquireWakeLock()
-                        startLocationTracking()
-                        isServiceRunning = true
-                        OptimizedLogger.d(TAG, "Unified monitoring started")
-                    }
+            try {
+                val lastSyncTime = context.getSharedPreferences(
+                    "call_log_sync", Context.MODE_PRIVATE).getLong("last_sync_time", 0)
+
+                val uri = CallLog.Calls.CONTENT_URI
+                val projection = arrayOf(CallLog.Calls._ID)
+                val selection = "${CallLog.Calls.DATE} > ?"
+                val selectionArgs = arrayOf(lastSyncTime.toString())
+
+                context.contentResolver.query(
+                    uri, projection, selection, selectionArgs, null
+                )?.use { cursor ->
+                    val count = cursor.count
+                    Log.d(TAG, "Found $count new calls since last sync")
+                    return count >= CALL_COUNT_THRESHOLD
                 }
-                ACTION_STOP_MONITORING -> {
-                    stopMonitoring()
-                }
-                ACTION_START_AUDIO -> {
-                    if (isServiceRunning && !isAudioRecording) {
-                        startAudioRecording()
-                    }
-                }
-                ACTION_STOP_AUDIO -> {
-                    stopAudioRecording()
-                }
-                else -> {
-                    // Default: start monitoring
-                    if (!isServiceRunning) {
-                        startForeground(NOTIFICATION_ID, createNotification())
-                        acquireWakeLock()
-                        startLocationTracking()
-                        isServiceRunning = true
-                    }
-                }
+
+                return false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking for new calls", e)
+                return false
             }
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error in onStartCommand", e)
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        return START_STICKY
-    }
-
-    override fun onDestroy() {
-        OptimizedLogger.d(TAG, "Service onDestroy")
-        try {
-            stopMonitoring()
-            isServiceRunning = false
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error in onDestroy", e)
-        }
-        super.onDestroy()
-    }
-
-    override fun onBind(intent: Intent): IBinder? = null
-
-    private fun stopMonitoring() {
-        try {
-            stopLocationTracking()
-            stopAudioRecording()
-            releaseWakeLock()
-            serviceScope.cancel()
-            stopSelf()
-            OptimizedLogger.d(TAG, "Monitoring stopped")
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error stopping monitoring", e)
         }
     }
 
-    // LOCATION TRACKING METHODS
-    private fun startLocationTracking() {
-        if (!hasLocationPermissions()) {
-            OptimizedLogger.e(TAG, "Missing location permissions")
-            return
-        }
-
-        if (isLocationTracking) return
-
-        try {
-            val locationRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                LocationRequest.Builder(LOCATION_UPDATE_INTERVAL)
-                    .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-                    .setMinUpdateIntervalMillis(FASTEST_LOCATION_INTERVAL)
-                    .setMinUpdateDistanceMeters(DISTANCE_THRESHOLD_METERS)
-                    .build()
-            } else {
-                LocationRequest.create().apply {
-                    interval = LOCATION_UPDATE_INTERVAL
-                    fastestInterval = FASTEST_LOCATION_INTERVAL
-                    priority = Priority.PRIORITY_HIGH_ACCURACY
-                    smallestDisplacement = DISTANCE_THRESHOLD_METERS
-                }
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        return@withContext try {
+            // Verify authentication first
+            val userEmail = AuthManager.getCurrentUser()?.email
+            if (userEmail == null) {
+                Log.w(TAG, "User not authenticated, skipping call log sync")
+                return@withContext Result.success()
             }
 
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
+            Log.d(TAG, "Starting call log sync for user: $userEmail")
+
+            // Check permissions
+            if (ContextCompat.checkSelfPermission(
+                    applicationContext,
+                    Manifest.permission.READ_CALL_LOG
+                ) != PackageManager.PERMISSION_GRANTED) {
+                Log.e(TAG, "Missing READ_CALL_LOG permission")
+                return@withContext Result.failure()
+            }
+
+            // Check Firebase availability
+            if (!FirebaseServiceHelper.isFirebaseAvailable()) {
+                Log.w(TAG, "Firebase not available, skipping call log sync")
+                return@withContext Result.success()
+            }
+
+            val prefs = applicationContext.getSharedPreferences("call_log_sync", Context.MODE_PRIVATE)
+            val lastSyncTime = prefs.getLong("last_sync_time", 0)
+            val currentTime = System.currentTimeMillis()
+
+            Log.d(TAG, "Last sync time: $lastSyncTime, Current time: $currentTime")
+
+            // Sync call logs to local database
+            val syncCount = syncCallLogs(lastSyncTime, currentTime)
+            Log.d(TAG, "Synced $syncCount call logs to local database")
+
+            // Upload to Firebase with correct structure
+            val uploadCount = uploadNewRecords(userEmail)
+            Log.d(TAG, "Uploaded $uploadCount call logs to Firebase")
+
+            // Update last sync time
+            prefs.edit().putLong("last_sync_time", currentTime).apply()
+
+            Log.d(TAG, "Call log sync completed successfully")
+            Result.success()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing call logs", e)
+            Result.retry()
+        }
+    }
+
+    private suspend fun syncCallLogs(lastSyncTime: Long, currentTime: Long): Int {
+        val callLogs = mutableListOf<CallLogEntity>()
+        var cursor: Cursor? = null
+
+        try {
+            val uri = CallLog.Calls.CONTENT_URI
+            val projection = arrayOf(
+                CallLog.Calls._ID,
+                CallLog.Calls.NUMBER,
+                CallLog.Calls.DATE,
+                CallLog.Calls.DURATION,
+                CallLog.Calls.TYPE,
+                CallLog.Calls.NEW,
+                CallLog.Calls.CACHED_NAME,
+                CallLog.Calls.CACHED_NUMBER_TYPE,
+                CallLog.Calls.CACHED_NUMBER_LABEL,
+                CallLog.Calls.CACHED_PHOTO_URI,
+                CallLog.Calls.IS_READ
             )
 
-            isLocationTracking = true
-            updateNotification("Location tracking active")
-            OptimizedLogger.d(TAG, "Location tracking started")
-        } catch (e: SecurityException) {
-            OptimizedLogger.e(TAG, "SecurityException starting location updates", e)
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error starting location tracking", e)
-        }
-    }
+            val selection = "${CallLog.Calls.DATE} > ?"
+            val selectionArgs = arrayOf(lastSyncTime.toString())
+            val sortOrder = "${CallLog.Calls.DATE} DESC"
 
-    private fun stopLocationTracking() {
-        try {
-            if (isLocationTracking) {
-                fusedLocationClient.removeLocationUpdates(locationCallback)
-                isLocationTracking = false
-                OptimizedLogger.d(TAG, "Location tracking stopped")
-            }
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error stopping location tracking", e)
-        }
-    }
-
-    private fun createLocationCallback() {
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(locationResult: LocationResult) {
-                for (location in locationResult.locations) {
-                    processNewLocation(location)
-                }
-            }
-        }
-    }
-
-    private fun processNewLocation(location: Location) {
-        val previousLocation = lastLocation
-
-        if (previousLocation == null ||
-            previousLocation.distanceTo(location) >= DISTANCE_THRESHOLD_METERS) {
-
-            saveLocationToDatabase(location)
-            lastLocation = location
-
-            OptimizedLogger.d(TAG, "Location updated: ${location.latitude}, ${location.longitude}")
-        }
-    }
-
-    private fun saveLocationToDatabase(location: Location) {
-        serviceScope.launch {
-            try {
-                val timestamp = System.currentTimeMillis()
-                val locationEntity = LocationEntity(
-                    timestamp = timestamp,
-                    latitude = location.latitude,
-                    longitude = location.longitude
-                )
-
-                // Save locally
-                db.locationDao().insertLocation(locationEntity)
-
-                // Upload to Firebase
-                uploadLocationToFirebase(locationEntity)
-
-                // Update sync time
-                applicationContext.getSharedPreferences("location_sync", Context.MODE_PRIVATE)
-                    .edit()
-                    .putLong("last_sync_time", timestamp)
-                    .apply()
-
-            } catch (e: Exception) {
-                OptimizedLogger.e(TAG, "Error saving location", e)
-            }
-        }
-    }
-
-    private suspend fun uploadLocationToFirebase(locationEntity: LocationEntity) {
-        val userEmail = AuthManager.getCurrentUser()?.email
-        if (userEmail == null || !FirebaseServiceHelper.isFirebaseAvailable()) {
-            return
-        }
-
-        try {
-            val locationData = mapOf(
-                "timestamp" to locationEntity.timestamp,
-                "latitude" to locationEntity.latitude,
-                "longitude" to locationEntity.longitude,
-                "deviceId" to deviceId,
-                "syncedAt" to System.currentTimeMillis()
+            cursor = applicationContext.contentResolver.query(
+                uri, projection, selection, selectionArgs, sortOrder
             )
 
-            val success = FirebaseServiceHelper.uploadLocation(userEmail, deviceId, locationData)
-            if (success) {
-                FirebaseServiceHelper.updateDeviceLastActive(userEmail, deviceId)
-            }
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error uploading location to Firebase", e)
-        }
-    }
+            cursor?.let {
+                val idIndex = it.getColumnIndex(CallLog.Calls._ID)
+                val numberIndex = it.getColumnIndex(CallLog.Calls.NUMBER)
+                val dateIndex = it.getColumnIndex(CallLog.Calls.DATE)
+                val durationIndex = it.getColumnIndex(CallLog.Calls.DURATION)
+                val typeIndex = it.getColumnIndex(CallLog.Calls.TYPE)
+                val newIndex = it.getColumnIndex(CallLog.Calls.NEW)
+                val nameIndex = it.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                val photoUriIndex = it.getColumnIndex(CallLog.Calls.CACHED_PHOTO_URI)
+                val isReadIndex = it.getColumnIndex(CallLog.Calls.IS_READ)
 
-    // SYNC COORDINATION METHODS
-    private fun syncAll() {
-        if (!AuthManager.isSignedIn()) {
-            OptimizedLogger.w(TAG, "User not authenticated, cannot sync data")
-            return
-        }
+                var recordsProcessed = 0
 
-        OptimizedLogger.d(TAG, "Starting coordinated sync of all data")
+                while (it.moveToNext() && recordsProcessed < SYNC_LIMIT) {
+                    val callId = if (idIndex >= 0) it.getString(idIndex) else UUID.randomUUID().toString()
+                    val number = if (numberIndex >= 0) it.getString(numberIndex) ?: "" else ""
+                    val date = if (dateIndex >= 0) it.getLong(dateIndex) else currentTime
+                    val duration = if (durationIndex >= 0) it.getLong(durationIndex) else 0
+                    val type = if (typeIndex >= 0) it.getInt(typeIndex) else CallLog.Calls.MISSED_TYPE
+                    val isNew = if (newIndex >= 0) it.getInt(newIndex) == 1 else false
+                    val name = if (nameIndex >= 0) it.getString(nameIndex) else null
+                    val photoUri = if (photoUriIndex >= 0) it.getString(photoUriIndex) else null
+                    val isRead = if (isReadIndex >= 0) it.getInt(isReadIndex) == 1 else false
 
-        try {
-            val workManager = WorkManager.getInstance(applicationContext)
+                    val callLogEntity = CallLogEntity(
+                        callId = callId,
+                        syncTimestamp = currentTime,
+                        phoneNumber = number,
+                        timestamp = date,
+                        duration = duration,
+                        type = type,
+                        contactName = name,
+                        contactPhotoUri = photoUri,
+                        isRead = isRead,
+                        isNew = isNew,
+                        deletedLocally = false,
+                        uploadedToCloud = false,
+                        deviceId = deviceId
+                    )
 
-            // Create constraints for optimal sync conditions
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .setRequiresBatteryNotLow(true)
-                .build()
+                    val existingCallLog = db.callLogDao().getCallLogByCallId(callId)
+                    if (existingCallLog == null) {
+                        callLogs.add(callLogEntity)
+                    } else {
+                        if (existingCallLog.isRead != isRead ||
+                            existingCallLog.duration != duration ||
+                            existingCallLog.contactName != name) {
 
-            // Batch all workers with constraints
-            val workers = listOf(
-                OneTimeWorkRequestBuilder<CallLogWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<MessageWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<ContactsWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<DeviceInfoWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<WeatherWorker>().setConstraints(constraints).build()
-            )
+                            db.callLogDao().updateCallLog(callLogEntity.copy(
+                                id = existingCallLog.id,
+                                uploadedToCloud = existingCallLog.uploadedToCloud,
+                                uploadTimestamp = existingCallLog.uploadTimestamp
+                            ))
+                        }
+                    }
 
-            // Enqueue all workers
-            workers.forEach { worker -> workManager.enqueue(worker) }
-
-            OptimizedLogger.d(TAG, "Coordinated sync workers enqueued successfully")
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error during coordinated sync", e)
-        }
-    }
-
-    private fun checkTriggers() {
-        if (!AuthManager.isSignedIn()) {
-            return
-        }
-
-        serviceScope.launch {
-            try {
-                var shouldSync = false
-                val workManager = WorkManager.getInstance(applicationContext)
-
-                // Check thresholds efficiently
-                if (CallLogWorker.shouldSync(applicationContext)) {
-                    workManager.enqueue(OneTimeWorkRequestBuilder<CallLogWorker>().build())
-                    shouldSync = true
-                }
-
-                if (MessageWorker.shouldSync(applicationContext)) {
-                    workManager.enqueue(OneTimeWorkRequestBuilder<MessageWorker>().build())
-                    shouldSync = true
-                }
-
-                if (shouldSync) {
-                    workManager.enqueue(OneTimeWorkRequestBuilder<DeviceInfoWorker>().build())
-                }
-            } catch (e: Exception) {
-                OptimizedLogger.e(TAG, "Error in coordinated trigger check", e)
-            }
-        }
-    }
-
-    // AUDIO RECORDING METHODS (Coordination only)
-    private fun startAudioRecording() {
-        if (!hasAudioPermissions()) {
-            OptimizedLogger.e(TAG, "Missing audio permissions")
-            return
-        }
-
-        if (isAudioRecording) return
-
-        try {
-            isAudioRecording = true
-            updateNotification("Location + Audio monitoring active")
-
-            // Start AudioRecordingService
-            val audioIntent = Intent(this, AudioRecordingService::class.java)
-            audioIntent.action = AudioRecordingService.ACTION_START_RECORDING
-            startService(audioIntent)
-
-            OptimizedLogger.d(TAG, "Audio recording coordinated through AudioRecordingService")
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error coordinating audio recording", e)
-            isAudioRecording = false
-        }
-    }
-
-    private fun stopAudioRecording() {
-        try {
-            if (isAudioRecording) {
-                // Stop AudioRecordingService
-                val audioIntent = Intent(this, AudioRecordingService::class.java)
-                audioIntent.action = AudioRecordingService.ACTION_STOP_RECORDING
-                startService(audioIntent)
-
-                isAudioRecording = false
-                updateNotification("Location tracking active")
-                OptimizedLogger.d(TAG, "Audio recording stopped")
-            }
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error stopping audio recording", e)
-        }
-    }
-
-    // PERMISSION CHECKS
-    private fun hasLocationPermissions(): Boolean {
-        val hasLocation = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val hasForegroundLocation = if (Build.VERSION.SDK_INT >= 34) {
-            ContextCompat.checkSelfPermission(
-                this, Manifest.permission.FOREGROUND_SERVICE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        } else true
-
-        return hasLocation && hasForegroundLocation
-    }
-
-    private fun hasAudioPermissions(): Boolean {
-        val hasAudio = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val hasForegroundAudio = if (Build.VERSION.SDK_INT >= 34) {
-            ContextCompat.checkSelfPermission(
-                this, Manifest.permission.FOREGROUND_SERVICE_MICROPHONE
-            ) == PackageManager.PERMISSION_GRANTED
-        } else true
-
-        return hasAudio && hasForegroundAudio
-    }
-
-    // NOTIFICATION METHODS
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Unified Monitoring Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Location tracking and monitoring coordination"
-                setShowBadge(false)
-            }
-
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        }
-    }
-
-    private fun createNotification(message: String = "Home Guardian monitoring active"): Notification {
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Home Guardian")
-            .setContentText(message)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setOngoing(true)
-            .build()
-    }
-
-    private fun updateNotification(message: String) {
-        try {
-            val notification = createNotification(message)
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error updating notification", e)
-        }
-    }
-
-    // POWER MANAGEMENT
-    private fun acquireWakeLock() {
-        if (wakeLock == null) {
-            try {
-                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                wakeLock = powerManager.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "UnifiedMonitoringService::WakeLock"
-                )
-                wakeLock?.acquire(10 * 60 * 60 * 1000L) // 10 hours max
-                OptimizedLogger.d(TAG, "Wake lock acquired")
-            } catch (e: Exception) {
-                OptimizedLogger.e(TAG, "Error acquiring wake lock", e)
-            }
-        }
-    }
-
-    private fun releaseWakeLock() {
-        try {
-            wakeLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                    OptimizedLogger.d(TAG, "Wake lock released")
+                    recordsProcessed++
                 }
             }
-            wakeLock = null
+
+            if (callLogs.isNotEmpty()) {
+                db.callLogDao().insertCallLogs(callLogs)
+                Log.d(TAG, "Inserted ${callLogs.size} new call logs")
+            }
+
+            return callLogs.size
         } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error releasing wake lock", e)
+            Log.e(TAG, "Error querying call logs", e)
+            throw e
+        } finally {
+            cursor?.close()
+        }
+    }
+
+    private suspend fun uploadNewRecords(userEmail: String): Int {
+        try {
+            val notUploadedCallLogs = db.callLogDao().getNotUploadedCallLogs()
+            Log.d(TAG, "Found ${notUploadedCallLogs.size} call logs to upload")
+
+            var successCount = 0
+
+            for (callLog in notUploadedCallLogs) {
+                try {
+                    val callLogData = mapOf(
+                        "callId" to callLog.callId,
+                        "syncTimestamp" to callLog.syncTimestamp,
+                        "phoneNumber" to callLog.phoneNumber,
+                        "timestamp" to callLog.timestamp,
+                        "duration" to callLog.duration,
+                        "type" to callLog.type,
+                        "contactName" to (callLog.contactName ?: ""),
+                        "contactPhotoUri" to (callLog.contactPhotoUri ?: ""),
+                        "isRead" to callLog.isRead,
+                        "isNew" to callLog.isNew,
+                        "deviceId" to deviceId,
+                        "uploadedAt" to System.currentTimeMillis()
+                    )
+
+                    // This will create: /users/{sanitized_email}/devices/{deviceId}/call_logs/{callId}
+                    val success = FirebaseServiceHelper.uploadCallLog(userEmail, deviceId, callLogData)
+
+                    if (success) {
+                        val uploadTime = System.currentTimeMillis()
+                        db.callLogDao().markCallLogAsUploaded(callLog.id, uploadTime)
+                        successCount++
+                        Log.d(TAG, "Call log ${callLog.callId} uploaded successfully to call_logs collection")
+                    } else {
+                        Log.w(TAG, "Failed to upload call log ${callLog.callId}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error uploading call log ${callLog.callId}", e)
+                }
+            }
+
+            return successCount
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in uploadNewRecords", e)
+            return 0
         }
     }
 }

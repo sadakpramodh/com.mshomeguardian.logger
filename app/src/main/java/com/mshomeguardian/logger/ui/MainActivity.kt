@@ -22,7 +22,7 @@ import androidx.core.content.ContextCompat
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.utils.AuthManager
-import com.mshomeguardian.logger.services.LocationMonitoringService
+import com.mshomeguardian.logger.utils.LocationMonitoringService
 import com.mshomeguardian.logger.utils.DataSyncManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.widget.HomeGuardianWidget

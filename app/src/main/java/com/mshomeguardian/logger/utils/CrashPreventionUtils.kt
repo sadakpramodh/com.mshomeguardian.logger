@@ -390,7 +390,7 @@ object CrashPreventionUtils {
             ErrorHandling.safeExecute(TAG, "resetToSafeState", Unit) {
                 // Stop all services safely
                 val services = listOf(
-                    "com.mshomeguardian.logger.services.LocationMonitoringService",
+                    "com.mshomeguardian.logger.utils.LocationMonitoringService",
                     "com.mshomeguardian.logger.services.AudioRecordingService",
                     "com.mshomeguardian.logger.services.RecordingService",
                     "com.mshomeguardian.logger.services.MonitoringService"

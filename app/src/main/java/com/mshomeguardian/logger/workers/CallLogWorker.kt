@@ -1,274 +1,388 @@
-package com.mshomeguardian.logger.workers
+package com.mshomeguardian.logger.utils
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import android.database.Cursor
-import android.provider.CallLog
 import android.util.Log
-import androidx.core.content.ContextCompat
-import androidx.work.CoroutineWorker
-import androidx.work.WorkerParameters
-import com.mshomeguardian.logger.data.AppDatabase
-import com.mshomeguardian.logger.data.CallLogEntity
-import com.mshomeguardian.logger.utils.AuthManager
-import com.mshomeguardian.logger.utils.DeviceIdentifier
-import com.mshomeguardian.logger.utils.FirebaseServiceHelper
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.util.*
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.tasks.await
 
-class CallLogWorker(
-    context: Context,
-    params: WorkerParameters
-) : CoroutineWorker(context, params) {
+/**
+ * Updated FirebaseServiceHelper with consistent user-based structure
+ */
+object FirebaseServiceHelper {
+    private const val TAG = "FirebaseServiceHelper"
 
-    private val db = AppDatabase.getInstance(context.applicationContext)
-    private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
-
-    companion object {
-        private const val TAG = "CallLogWorker"
-        private const val SYNC_LIMIT = 500
-
-        // Threshold for automatic synchronization
-        private const val CALL_COUNT_THRESHOLD = 3
-
-        /**
-         * Check if there are enough new calls to trigger a sync
-         */
-        suspend fun shouldSync(context: Context): Boolean {
-            // Skip check if permission is not granted
-            if (ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.READ_CALL_LOG
-                ) != PackageManager.PERMISSION_GRANTED) {
-                return false
-            }
-
-            // Skip if user not authenticated
-            if (!AuthManager.isSignedIn()) {
-                return false
-            }
-
-            try {
-                val lastSyncTime = context.getSharedPreferences(
-                    "call_log_sync", Context.MODE_PRIVATE).getLong("last_sync_time", 0)
-
-                // Query the number of new calls since last sync
-                val uri = CallLog.Calls.CONTENT_URI
-                val projection = arrayOf(CallLog.Calls._ID)
-                val selection = "${CallLog.Calls.DATE} > ?"
-                val selectionArgs = arrayOf(lastSyncTime.toString())
-
-                context.contentResolver.query(
-                    uri, projection, selection, selectionArgs, null
-                )?.use { cursor ->
-                    val count = cursor.count
-                    Log.d(TAG, "Found $count new calls since last sync")
-                    return count >= CALL_COUNT_THRESHOLD
-                }
-
-                return false
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking for new calls", e)
-                return false
-            }
-        }
-    }
-
-    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        return@withContext try {
-            // Check authentication first
-            val userEmail = AuthManager.getCurrentUser()?.email
-            if (userEmail == null) {
-                Log.w(TAG, "User not authenticated, skipping call log sync")
-                return@withContext Result.success()
-            }
-
-            // Check permissions
-            if (ContextCompat.checkSelfPermission(
-                    applicationContext,
-                    Manifest.permission.READ_CALL_LOG
-                ) != PackageManager.PERMISSION_GRANTED) {
-                Log.e(TAG, "Missing READ_CALL_LOG permission")
-                return@withContext Result.failure()
-            }
-
-            // Check if Firebase is available
-            if (!FirebaseServiceHelper.isFirebaseAvailable()) {
-                Log.w(TAG, "Firebase not available, skipping call log sync")
-                return@withContext Result.success()
-            }
-
-            // Get last sync time from shared preferences
-            val prefs = applicationContext.getSharedPreferences("call_log_sync", Context.MODE_PRIVATE)
-            val lastSyncTime = prefs.getLong("last_sync_time", 0)
-            val currentTime = System.currentTimeMillis()
-
-            // Sync call logs
-            val syncCount = syncCallLogs(lastSyncTime, currentTime)
-
-            // Upload new records to Firebase using new structure
-            val uploadCount = uploadNewRecords(userEmail)
-
-            // Update last sync time if successful
-            prefs.edit().putLong("last_sync_time", currentTime).apply()
-
-            Log.d(TAG, "Call log sync completed. Synced $syncCount records, uploaded $uploadCount to Firebase.")
-            Result.success()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing call logs", e)
-            Result.retry()
-        }
-    }
-
-    private suspend fun syncCallLogs(lastSyncTime: Long, currentTime: Long): Int {
-        val callLogs = mutableListOf<CallLogEntity>()
-        var cursor: Cursor? = null
-
+    private val firestore: FirebaseFirestore? by lazy {
         try {
-            // Query call logs since last sync
-            val uri = CallLog.Calls.CONTENT_URI
-            val projection = arrayOf(
-                CallLog.Calls._ID,
-                CallLog.Calls.NUMBER,
-                CallLog.Calls.DATE,
-                CallLog.Calls.DURATION,
-                CallLog.Calls.TYPE,
-                CallLog.Calls.NEW,
-                CallLog.Calls.CACHED_NAME,
-                CallLog.Calls.CACHED_NUMBER_TYPE,
-                CallLog.Calls.CACHED_NUMBER_LABEL,
-                CallLog.Calls.CACHED_PHOTO_URI,
-                CallLog.Calls.IS_READ
-            )
-
-            val selection = "${CallLog.Calls.DATE} > ?"
-            val selectionArgs = arrayOf(lastSyncTime.toString())
-            val sortOrder = "${CallLog.Calls.DATE} DESC"
-
-            cursor = applicationContext.contentResolver.query(
-                uri, projection, selection, selectionArgs, sortOrder
-            )
-
-            cursor?.let {
-                val idIndex = it.getColumnIndex(CallLog.Calls._ID)
-                val numberIndex = it.getColumnIndex(CallLog.Calls.NUMBER)
-                val dateIndex = it.getColumnIndex(CallLog.Calls.DATE)
-                val durationIndex = it.getColumnIndex(CallLog.Calls.DURATION)
-                val typeIndex = it.getColumnIndex(CallLog.Calls.TYPE)
-                val newIndex = it.getColumnIndex(CallLog.Calls.NEW)
-                val nameIndex = it.getColumnIndex(CallLog.Calls.CACHED_NAME)
-                val photoUriIndex = it.getColumnIndex(CallLog.Calls.CACHED_PHOTO_URI)
-                val isReadIndex = it.getColumnIndex(CallLog.Calls.IS_READ)
-
-                var recordsProcessed = 0
-
-                while (it.moveToNext() && recordsProcessed < SYNC_LIMIT) {
-                    val callId = if (idIndex >= 0) it.getString(idIndex) else UUID.randomUUID().toString()
-                    val number = if (numberIndex >= 0) it.getString(numberIndex) ?: "" else ""
-                    val date = if (dateIndex >= 0) it.getLong(dateIndex) else currentTime
-                    val duration = if (durationIndex >= 0) it.getLong(durationIndex) else 0
-                    val type = if (typeIndex >= 0) it.getInt(typeIndex) else CallLog.Calls.MISSED_TYPE
-                    val isNew = if (newIndex >= 0) it.getInt(newIndex) == 1 else false
-                    val name = if (nameIndex >= 0) it.getString(nameIndex) else null
-                    val photoUri = if (photoUriIndex >= 0) it.getString(photoUriIndex) else null
-                    val isRead = if (isReadIndex >= 0) it.getInt(isReadIndex) == 1 else false
-
-                    val callLogEntity = CallLogEntity(
-                        callId = callId,
-                        syncTimestamp = currentTime,
-                        phoneNumber = number,
-                        timestamp = date,
-                        duration = duration,
-                        type = type,
-                        contactName = name,
-                        contactPhotoUri = photoUri,
-                        isRead = isRead,
-                        isNew = isNew,
-                        deletedLocally = false,
-                        uploadedToCloud = false,
-                        deviceId = deviceId
-                    )
-
-                    val existingCallLog = db.callLogDao().getCallLogByCallId(callId)
-                    if (existingCallLog == null) {
-                        callLogs.add(callLogEntity)
-                    } else {
-                        if (existingCallLog.isRead != isRead ||
-                            existingCallLog.duration != duration ||
-                            existingCallLog.contactName != name) {
-
-                            db.callLogDao().updateCallLog(callLogEntity.copy(
-                                id = existingCallLog.id,
-                                uploadedToCloud = existingCallLog.uploadedToCloud,
-                                uploadTimestamp = existingCallLog.uploadTimestamp
-                            ))
-                        }
-                    }
-
-                    recordsProcessed++
-                }
-            }
-
-            if (callLogs.isNotEmpty()) {
-                db.callLogDao().insertCallLogs(callLogs)
-                Log.d(TAG, "Inserted ${callLogs.size} new call logs")
-            }
-
-            return callLogs.size
+            FirebaseFirestore.getInstance()
         } catch (e: Exception) {
-            Log.e(TAG, "Error querying call logs", e)
-            throw e
-        } finally {
-            cursor?.close()
+            Log.e(TAG, "Failed to initialize Firestore", e)
+            null
         }
     }
 
-    private suspend fun uploadNewRecords(userEmail: String): Int {
+    private val storage: FirebaseStorage? by lazy {
         try {
-            val notUploadedCallLogs = db.callLogDao().getNotUploadedCallLogs()
-            Log.d(TAG, "Found ${notUploadedCallLogs.size} call logs to upload")
+            FirebaseStorage.getInstance()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Firebase Storage", e)
+            null
+        }
+    }
 
-            var successCount = 0
-
-            for (callLog in notUploadedCallLogs) {
-                try {
-                    // Create call log data map
-                    val callLogData = mapOf(
-                        "callId" to callLog.callId,
-                        "syncTimestamp" to callLog.syncTimestamp,
-                        "phoneNumber" to callLog.phoneNumber,
-                        "timestamp" to callLog.timestamp,
-                        "duration" to callLog.duration,
-                        "type" to callLog.type,
-                        "contactName" to (callLog.contactName ?: ""),
-                        "contactPhotoUri" to (callLog.contactPhotoUri ?: ""),
-                        "isRead" to callLog.isRead,
-                        "isNew" to callLog.isNew,
-                        "deviceId" to deviceId,
-                        "uploadedAt" to System.currentTimeMillis()
-                    )
-
-                    // Upload using new Firebase structure
-                    val success = FirebaseServiceHelper.uploadCallLog(userEmail, deviceId, callLogData)
-
-                    if (success) {
-                        val uploadTime = System.currentTimeMillis()
-                        db.callLogDao().markCallLogAsUploaded(callLog.id, uploadTime)
-                        successCount++
-                        Log.d(TAG, "Call log ${callLog.callId} uploaded successfully")
-                    } else {
-                        Log.w(TAG, "Failed to upload call log ${callLog.callId}")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error uploading call log ${callLog.callId}", e)
+    /**
+     * Safe execution wrapper for Firestore operations
+     */
+    private suspend fun <T> safeFirestoreOperation(
+        operation: suspend () -> T,
+        operationName: String,
+        defaultValue: T
+    ): T {
+        return try {
+            operation()
+        } catch (e: Exception) {
+            when {
+                e.message?.contains("UNAVAILABLE") == true -> {
+                    Log.d(TAG, "$operationName temporarily unavailable - will retry automatically")
+                }
+                e.message?.contains("permission", ignoreCase = true) == true -> {
+                    Log.w(TAG, "$operationName permission denied - check authentication and rules")
+                }
+                e.message?.contains("NOT_FOUND") == true -> {
+                    Log.w(TAG, "$operationName document not found - this is expected for new documents")
+                }
+                else -> {
+                    Log.e(TAG, "$operationName failed: ${e.message}")
                 }
             }
+            defaultValue
+        }
+    }
 
-            return successCount
+    /**
+     * Sanitize email address for use as Firestore document ID
+     * This must match exactly what you see in Firebase Console
+     */
+    private fun sanitizeEmailForFirestore(email: String): String {
+        return email.replace(".", "_dot_")
+            .replace("@", "_at_")
+            .replace("/", "_")
+            .replace("[", "_")
+            .replace("]", "_")
+            .replace("*", "_")
+            .replace("?", "_")
+    }
+
+    /**
+     * Get the user document path
+     */
+    private fun getUserDocumentPath(userEmail: String): String {
+        return "users/${sanitizeEmailForFirestore(userEmail)}"
+    }
+
+    /**
+     * Get the device document path within user's collection
+     */
+    private fun getDeviceDocumentPath(userEmail: String, deviceId: String): String {
+        return "${getUserDocumentPath(userEmail)}/devices/$deviceId"
+    }
+
+    /**
+     * Get collection path for specific data type
+     */
+    private fun getCollectionPath(userEmail: String, deviceId: String, collection: String): String {
+        return "${getDeviceDocumentPath(userEmail, deviceId)}/$collection"
+    }
+
+    /**
+     * Initialize user account in Firestore
+     */
+    suspend fun initializeUserAccount(userEmail: String, deviceId: String): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                // Create user document
+                val userData = mapOf(
+                    "email" to userEmail,
+                    "createdAt" to System.currentTimeMillis(),
+                    "lastUpdated" to System.currentTimeMillis(),
+                    "deviceCount" to 1
+                )
+
+                val userDocPath = getUserDocumentPath(userEmail)
+                firestoreInstance.document(userDocPath)
+                    .set(userData, SetOptions.merge())
+                    .await()
+
+                // Initialize device document
+                val deviceData = mapOf(
+                    "deviceId" to deviceId,
+                    "registeredAt" to System.currentTimeMillis(),
+                    "lastActive" to System.currentTimeMillis(),
+                    "isActive" to true
+                )
+
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+                firestoreInstance.document(deviceDocPath)
+                    .set(deviceData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "User account initialized for $userEmail with device $deviceId")
+                true
+            },
+            operationName = "Initialize user account",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload location data with user-based structure
+     */
+    suspend fun uploadLocation(
+        userEmail: String,
+        deviceId: String,
+        locationData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = locationData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "locations")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(locationData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Location uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload location",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload call log data with user-based structure
+     */
+    suspend fun uploadCallLog(
+        userEmail: String,
+        deviceId: String,
+        callLogData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val callId = callLogData["callId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "call_logs")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(callId)
+                    .set(callLogData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Call log uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload call log",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload message data with user-based structure
+     */
+    suspend fun uploadMessage(
+        userEmail: String,
+        deviceId: String,
+        messageData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val messageId = messageData["messageId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "messages")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(messageId)
+                    .set(messageData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Message uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload message",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload contact data with user-based structure
+     */
+    suspend fun uploadContact(
+        userEmail: String,
+        deviceId: String,
+        contactData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val contactId = contactData["contactId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "contacts")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(contactId)
+                    .set(contactData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Contact uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload contact",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload device info with user-based structure
+     */
+    suspend fun uploadDeviceInfo(
+        userEmail: String,
+        deviceId: String,
+        deviceData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+
+                firestoreInstance.document(deviceDocPath)
+                    .set(deviceData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Device info uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload device info",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload audio recording metadata with user-based structure
+     */
+    suspend fun uploadAudioRecording(
+        userEmail: String,
+        deviceId: String,
+        recordingData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val recordingId = recordingData["recordingId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "audio_recordings")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(recordingId)
+                    .set(recordingData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Audio recording metadata uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload audio recording",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload weather data with user-based structure
+     */
+    suspend fun uploadWeather(
+        userEmail: String,
+        deviceId: String,
+        weatherData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = weatherData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "weather")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(weatherData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Weather data uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload weather",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Update device last active timestamp
+     */
+    suspend fun updateDeviceLastActive(userEmail: String, deviceId: String): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+                val updateData = mapOf(
+                    "lastActive" to System.currentTimeMillis(),
+                    "deviceId" to deviceId,
+                    "isActive" to true
+                )
+
+                firestoreInstance.document(deviceDocPath)
+                    .set(updateData, SetOptions.merge())
+                    .await()
+
+                true
+            },
+            operationName = "Update device last active",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Get Firebase Storage reference with user-based structure
+     */
+    fun getAudioStorageReference(userEmail: String, deviceId: String, filename: String) =
+        storage?.reference?.child("users")
+            ?.child(sanitizeEmailForFirestore(userEmail))
+            ?.child("devices")
+            ?.child(deviceId)
+            ?.child("audio")
+            ?.child(filename)
+
+    /**
+     * Check if Firebase services are available
+     */
+    fun isFirebaseAvailable(): Boolean {
+        return firestore != null && storage != null
+    }
+
+    /**
+     * Get current user email safely
+     */
+    fun getCurrentUserEmail(): String? {
+        return try {
+            AuthManager.getCurrentUser()?.email
         } catch (e: Exception) {
-            Log.e(TAG, "Error in uploadNewRecords", e)
-            return 0
+            Log.e(TAG, "Error getting current user email", e)
+            null
         }
     }
 }
