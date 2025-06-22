@@ -7,15 +7,11 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.LocationUtils
 import com.mshomeguardian.logger.utils.WeatherUtil
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import java.util.HashMap
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 
 class WeatherWorker(
@@ -25,12 +21,6 @@ class WeatherWorker(
 
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
-    private val firestore: FirebaseFirestore? = try {
-        FirebaseFirestore.getInstance()
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firestore", e)
-        null
-    }
 
     companion object {
         private const val TAG = "WeatherWorker"
@@ -91,10 +81,8 @@ class WeatherWorker(
         weatherData: WeatherUtil.WeatherData,
         timestamp: Long
     ) {
-        val firestoreInstance = firestore ?: return
-
         try {
-            val weatherMap = HashMap<String, Any>()
+            val weatherMap = mutableMapOf<String, Any>()
             weatherMap["latitude"] = latitude
             weatherMap["longitude"] = longitude
             weatherMap["temperature"] = weatherData.temperature
@@ -113,9 +101,16 @@ class WeatherWorker(
                 return
             }
 
-            FirebaseServiceHelper.uploadWeather(userEmail, deviceId, weatherMap)
-
-            Log.d(TAG, "Weather data uploaded to Firestore")
+            val success = FirebaseServiceHelper.uploadWeather(userEmail, deviceId, weatherMap)
+            val sanitizedEmail = FirebaseServiceHelper.sanitizeEmailForFirestore(userEmail)
+            if (success) {
+                Log.d(
+                    TAG,
+                    "Weather data uploaded to users/$sanitizedEmail/devices/$deviceId/weather"
+                )
+            } else {
+                Log.e(TAG, "Failed to upload weather data to Firestore")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to upload weather data", e)
         }

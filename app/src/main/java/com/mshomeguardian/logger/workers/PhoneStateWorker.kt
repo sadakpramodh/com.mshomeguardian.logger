@@ -194,18 +194,18 @@ class PhoneStateWorker(
                 return
             }
 
-            val sanitizedEmail = FirebaseServiceHelper.sanitizeEmailForFirestore(userEmail)
+            val success = FirebaseServiceHelper.uploadPhoneState(
+                userEmail,
+                deviceId,
+                id,
+                phoneStateMap
+            )
 
-            firestoreInstance.collection("users")
-                .document(sanitizedEmail)
-                .collection("devices")
-                .document(deviceId)
-                .collection("phone_state")
-                .document(id)
-                .set(phoneStateMap, SetOptions.merge())
-                .await()
-
-            Log.d(TAG, "Phone state uploaded to Firestore")
+            if (success) {
+                Log.d(TAG, "Phone state uploaded to Firestore")
+            } else {
+                Log.e(TAG, "Failed to upload phone state")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to upload phone state", e)
         }

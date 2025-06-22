@@ -244,7 +244,9 @@ class CallLogWorker(
                         "uploadedAt" to System.currentTimeMillis()
                     )
 
-                    // This will create: /users/{sanitized_email}/devices/{deviceId}/call_logs/{callId}
+                    val sanitizedEmail = FirebaseServiceHelper.sanitizeEmailForFirestore(userEmail)
+                    val firestorePath = "users/$sanitizedEmail/devices/$deviceId/call_logs"
+                    Log.d(TAG, "Uploading to $firestorePath")
                     val success = FirebaseServiceHelper.uploadCallLog(userEmail, deviceId, callLogData)
 
                     if (success) {

@@ -336,6 +336,34 @@ object FirebaseServiceHelper {
     }
 
     /**
+     * Upload phone state data with user-based structure
+     */
+    suspend fun uploadPhoneState(
+        userEmail: String,
+        deviceId: String,
+        id: String,
+        phoneStateData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val collectionPath = getCollectionPath(userEmail, deviceId, "phone_state")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(id)
+                    .set(phoneStateData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Phone state uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload phone state",
+            defaultValue = false
+        )
+    }
+
+    /**
      * Update device last active timestamp
      */
     suspend fun updateDeviceLastActive(userEmail: String, deviceId: String): Boolean {
