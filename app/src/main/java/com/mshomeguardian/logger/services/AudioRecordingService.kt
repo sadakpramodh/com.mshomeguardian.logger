@@ -620,7 +620,7 @@ class AudioRecordingService : Service() {
         val firestoreInstance = firestore ?: return
 
         try {
-            val recordingData = hashMapOf(
+            val recordingData = hashMapOf<String, Any>(
                 "recordingId" to recording.recordingId,
                 "fileName" to recording.fileName,
                 "startTime" to recording.startTime,
