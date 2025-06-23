@@ -101,13 +101,12 @@ class WeatherWorker(
                 return
             }
 
-            val success = FirebaseServiceHelper.uploadWeather(userEmail, deviceId, weatherMap)
             val sanitizedEmail = FirebaseServiceHelper.sanitizeEmailForFirestore(userEmail)
+            val collectionPath = "users/$sanitizedEmail/devices/$deviceId/weather"
+            Log.d(TAG, "Uploading weather data to $collectionPath")
+            val success = FirebaseServiceHelper.uploadWeather(userEmail, deviceId, weatherMap)
             if (success) {
-                Log.d(
-                    TAG,
-                    "Weather data uploaded to users/$sanitizedEmail/devices/$deviceId/weather"
-                )
+                Log.d(TAG, "Weather data uploaded to $collectionPath")
             } else {
                 Log.e(TAG, "Failed to upload weather data to Firestore")
             }

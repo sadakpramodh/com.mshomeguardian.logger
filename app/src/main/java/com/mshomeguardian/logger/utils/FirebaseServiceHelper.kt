@@ -321,6 +321,7 @@ object FirebaseServiceHelper {
 
                 val timestamp = weatherData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "weather")
+                Log.d(TAG, "Using weather collection path: $collectionPath")
 
                 firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
