@@ -1,105 +1,74 @@
 package com.mshomeguardian.logger.utils
 
-import android.content.Context
 import android.util.Log
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
 
 /**
- * Test helper to verify the exact Firebase structure:
- * /users/sadakpramodh_at_yahoo_dot_com/devices/ffffffff-f714-60bc-1437-68a1d95aa476/{call_logs, contacts, messages, weather}
+ * Updated FirebaseServiceHelper with consistent user-based structure
  */
-object FirebaseStructureTestHelper {
-    private const val TAG = "FirebaseStructureTest"
+object FirebaseServiceHelper {
+    private const val TAG = "FirebaseServiceHelper"
 
-    /**
-     * Test the exact structure you want
-     */
-    suspend fun testExactStructure(context: Context) {
-        Log.d(TAG, "=== TESTING EXACT FIREBASE STRUCTURE ===")
-
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser?.email == null) {
-            Log.e(TAG, "❌ User not authenticated")
-            return
-        }
-
-        val userEmail = currentUser.email!!
-        val deviceId = DeviceIdentifier.getPersistentDeviceId(context)
-
-        // This should create: /users/sadakpramodh_at_yahoo_dot_com/devices/ffffffff-f714-60bc-1437-68a1d95aa476/
-        val sanitizedEmail = sanitizeEmailForFirestore(userEmail)
-
-        Log.d(TAG, "Original email: $userEmail")
-        Log.d(TAG, "Sanitized email: $sanitizedEmail")
-        Log.d(TAG, "Device ID: $deviceId")
-        Log.d(TAG, "Expected structure: /users/$sanitizedEmail/devices/$deviceId/")
-
-        val firestore = FirebaseFirestore.getInstance()
-
-        // Test each collection
-        val collections = listOf("call_logs", "contacts", "messages", "weather", "locations", "audio_recordings")
-
-        for (collection in collections) {
-            try {
-                val testData = mapOf(
-                    "test" to true,
-                    "timestamp" to System.currentTimeMillis(),
-                    "collection" to collection,
-                    "userEmail" to userEmail,
-                    "deviceId" to deviceId
-                )
-
-                val documentPath = "users/$sanitizedEmail/devices/$deviceId/$collection/test_${System.currentTimeMillis()}"
-                Log.d(TAG, "Testing path: $documentPath")
-
-                firestore.document(documentPath)
-                    .set(testData)
-                    .await()
-
-                Log.d(TAG, "✅ SUCCESS: $collection collection created")
-
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ FAILED: $collection collection - ${e.message}")
-
-                // Detailed error analysis
-                when {
-                    e.message?.contains("PERMISSION_DENIED") == true -> {
-                        Log.e(TAG, "   → Permission denied - check Firestore rules")
-                    }
-                    e.message?.contains("UNAUTHENTICATED") == true -> {
-                        Log.e(TAG, "   → User not authenticated properly")
-                    }
-                    e.message?.contains("UNAVAILABLE") == true -> {
-                        Log.e(TAG, "   → Network/service unavailable")
-                    }
-                    else -> {
-                        Log.e(TAG, "   → Unknown error: ${e.javaClass.simpleName}")
-                    }
-                }
-            }
-        }
-
-        // Test reading the structure
+    private val firestore: FirebaseFirestore? by lazy {
         try {
-            val userDoc = firestore.document("users/$sanitizedEmail").get().await()
-            Log.d(TAG, "✅ User document exists: ${userDoc.exists()}")
-
-            val deviceDoc = firestore.document("users/$sanitizedEmail/devices/$deviceId").get().await()
-            Log.d(TAG, "✅ Device document exists: ${deviceDoc.exists()}")
-
+            FirebaseFirestore.getInstance()
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error reading structure: ${e.message}")
+            Log.e(TAG, "Failed to initialize Firestore", e)
+            null
         }
+    }
 
-        Log.d(TAG, "=== STRUCTURE TEST COMPLETE ===")
+    private val storage: FirebaseStorage? by lazy {
+        try {
+            FirebaseStorage.getInstance()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Firebase Storage", e)
+            null
+        }
     }
 
     /**
-     * Sanitize email exactly as your code does
+     * Safe execution wrapper for Firestore operations
      */
-    private fun sanitizeEmailForFirestore(email: String): String {
+    private suspend fun <T> safeFirestoreOperation(
+        operation: suspend () -> T,
+        operationName: String,
+        defaultValue: T
+    ): T {
+        return try {
+            operation()
+        } catch (e: Exception) {
+            when {
+                e.message?.contains("UNAVAILABLE") == true -> {
+                    Log.d(TAG, "$operationName temporarily unavailable - will retry automatically")
+                }
+                e.message?.contains("permission", ignoreCase = true) == true -> {
+                    Log.w(TAG, "$operationName permission denied - check authentication and rules")
+                }
+                e.message?.contains("NOT_FOUND") == true -> {
+                    Log.w(TAG, "$operationName document not found - this is expected for new documents")
+                }
+                else -> {
+                    Log.e(TAG, "$operationName failed: ${e.message}")
+                }
+            }
+            defaultValue
+        }
+    }
+
+    /**
+     * Sanitize email address for use as Firestore document ID
+     * This must match exactly what you see in Firebase Console
+     */
+    /**
+     * Sanitize an email address so it can be safely used as a Firestore
+     * document ID. This helper is public so workers can share the logic
+     * and remain consistent with the console structure.
+     */
+    fun sanitizeEmailForFirestore(email: String): String {
         return email.replace(".", "_dot_")
             .replace("@", "_at_")
             .replace("/", "_")
@@ -110,109 +79,342 @@ object FirebaseStructureTestHelper {
     }
 
     /**
-     * Test a specific collection with real data
+     * Get the user document path
      */
-    suspend fun testSpecificCollection(context: Context, collectionName: String, testData: Map<String, Any>) {
-        Log.d(TAG, "=== TESTING $collectionName COLLECTION ===")
-
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser?.email == null) {
-            Log.e(TAG, "❌ User not authenticated")
-            return
-        }
-
-        val userEmail = currentUser.email!!
-        val deviceId = DeviceIdentifier.getPersistentDeviceId(context)
-        val sanitizedEmail = sanitizeEmailForFirestore(userEmail)
-
-        try {
-            val firestore = FirebaseFirestore.getInstance()
-            val documentId = "test_${System.currentTimeMillis()}"
-
-            val fullPath = "users/$sanitizedEmail/devices/$deviceId/$collectionName/$documentId"
-            Log.d(TAG, "Writing to: $fullPath")
-
-            firestore.document(fullPath)
-                .set(testData)
-                .await()
-
-            Log.d(TAG, "✅ Successfully wrote to $collectionName")
-
-            // Verify we can read it back
-            val readDoc = firestore.document(fullPath).get().await()
-            if (readDoc.exists()) {
-                Log.d(TAG, "✅ Successfully read back from $collectionName")
-                Log.d(TAG, "   Data: ${readDoc.data}")
-            } else {
-                Log.e(TAG, "❌ Could not read back from $collectionName")
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error with $collectionName: ${e.message}")
-        }
+    private fun getUserDocumentPath(userEmail: String): String {
+        return "users/${sanitizeEmailForFirestore(userEmail)}"
     }
 
     /**
-     * Quick test of the exact path from your screenshot
+     * Get the device document path within user's collection
      */
-    suspend fun testScreenshotPath() {
-        Log.d(TAG, "=== TESTING SCREENSHOT PATH ===")
-
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser?.email == null) {
-            Log.e(TAG, "❌ User not authenticated")
-            return
-        }
-
-        // Your exact path from screenshot
-        val exactPath = "users/sadakpramodh_at_yahoo_dot_com/devices/ffffffff-f714-60bc-1437-68a1d95aa476"
-
-        Log.d(TAG, "Testing exact path: $exactPath")
-
-        try {
-            val firestore = FirebaseFirestore.getInstance()
-
-            // Test writing to call_logs
-            val callLogData = mapOf(
-                "test" to true,
-                "timestamp" to System.currentTimeMillis(),
-                "phoneNumber" to "+1234567890",
-                "duration" to 120L,
-                "type" to 1
-            )
-
-            firestore.document("$exactPath/call_logs/test_call")
-                .set(callLogData)
-                .await()
-
-            Log.d(TAG, "✅ Successfully wrote to exact call_logs path")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to write to exact path: ${e.message}")
-        }
+    private fun getDeviceDocumentPath(userEmail: String, deviceId: String): String {
+        return "${getUserDocumentPath(userEmail)}/devices/$deviceId"
     }
 
     /**
-     * Compare current user with expected structure
+     * Get collection path for specific data type
      */
-    fun verifyUserEmailMatch() {
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser?.email == null) {
-            Log.e(TAG, "❌ No current user")
-            return
-        }
+    private fun getCollectionPath(userEmail: String, deviceId: String, collection: String): String {
+        return "${getDeviceDocumentPath(userEmail, deviceId)}/$collection"
+    }
 
-        val userEmail = currentUser.email!!
-        val sanitizedEmail = sanitizeEmailForFirestore(userEmail)
+    /**
+     * Initialize user account in Firestore
+     */
+    suspend fun initializeUserAccount(userEmail: String, deviceId: String): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-        Log.d(TAG, "=== EMAIL VERIFICATION ===")
-        Log.d(TAG, "Current user email: $userEmail")
-        Log.d(TAG, "Sanitized email: $sanitizedEmail")
-        Log.d(TAG, "Expected from screenshot: sadakpramodh_at_yahoo_dot_com")
-        Log.d(TAG, "Match: ${sanitizedEmail == "sadakpramodh_at_yahoo_dot_com"}")
+                // Create user document
+                val userData = mapOf(
+                    "email" to userEmail,
+                    "createdAt" to System.currentTimeMillis(),
+                    "lastUpdated" to System.currentTimeMillis(),
+                    "deviceCount" to 1
+                )
 
-        if (sanitizedEmail != "sadakpramodh_at_yahoo_dot_com") {
-            Log.w(TAG, "⚠️ Email mismatch! You may need to sign in with sadakpramodh@yahoo.com")
+                val userDocPath = getUserDocumentPath(userEmail)
+                firestoreInstance.document(userDocPath)
+                    .set(userData, SetOptions.merge())
+                    .await()
+
+                // Initialize device document
+                val deviceData = mapOf(
+                    "deviceId" to deviceId,
+                    "registeredAt" to System.currentTimeMillis(),
+                    "lastActive" to System.currentTimeMillis(),
+                    "isActive" to true
+                )
+
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+                firestoreInstance.document(deviceDocPath)
+                    .set(deviceData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "User account initialized for $userEmail with device $deviceId")
+                true
+            },
+            operationName = "Initialize user account",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload location data with user-based structure
+     */
+    suspend fun uploadLocation(
+        userEmail: String,
+        deviceId: String,
+        locationData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = locationData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "locations")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(locationData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Location uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload location",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload call log data with user-based structure
+     */
+    suspend fun uploadCallLog(
+        userEmail: String,
+        deviceId: String,
+        callLogData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val callId = callLogData["callId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "call_logs")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(callId)
+                    .set(callLogData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Call log uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload call log",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload message data with user-based structure
+     */
+    suspend fun uploadMessage(
+        userEmail: String,
+        deviceId: String,
+        messageData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val messageId = messageData["messageId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "messages")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(messageId)
+                    .set(messageData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Message uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload message",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload contact data with user-based structure
+     */
+    suspend fun uploadContact(
+        userEmail: String,
+        deviceId: String,
+        contactData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val contactId = contactData["contactId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "contacts")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(contactId)
+                    .set(contactData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Contact uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload contact",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload device info with user-based structure
+     */
+    suspend fun uploadDeviceInfo(
+        userEmail: String,
+        deviceId: String,
+        deviceData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+
+                firestoreInstance.document(deviceDocPath)
+                    .set(deviceData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Device info uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload device info",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload audio recording metadata with user-based structure
+     */
+    suspend fun uploadAudioRecording(
+        userEmail: String,
+        deviceId: String,
+        recordingData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val recordingId = recordingData["recordingId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "audio_recordings")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(recordingId)
+                    .set(recordingData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Audio recording metadata uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload audio recording",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload weather data with user-based structure
+     */
+    suspend fun uploadWeather(
+        userEmail: String,
+        deviceId: String,
+        weatherData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = weatherData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "weather")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(weatherData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Weather data uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload weather",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload phone state data with user-based structure
+     */
+    suspend fun uploadPhoneState(
+        userEmail: String,
+        deviceId: String,
+        id: String,
+        phoneStateData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val collectionPath = getCollectionPath(userEmail, deviceId, "phone_state")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(id)
+                    .set(phoneStateData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Phone state uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload phone state",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Update device last active timestamp
+     */
+    suspend fun updateDeviceLastActive(userEmail: String, deviceId: String): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
+                val updateData = mapOf(
+                    "lastActive" to System.currentTimeMillis(),
+                    "deviceId" to deviceId,
+                    "isActive" to true
+                )
+
+                firestoreInstance.document(deviceDocPath)
+                    .set(updateData, SetOptions.merge())
+                    .await()
+
+                true
+            },
+            operationName = "Update device last active",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Get Firebase Storage reference with user-based structure
+     */
+    fun getAudioStorageReference(userEmail: String, deviceId: String, filename: String) =
+        storage?.reference?.child("users")
+            ?.child(sanitizeEmailForFirestore(userEmail))
+            ?.child("devices")
+            ?.child(deviceId)
+            ?.child("audio")
+            ?.child(filename)
+
+    /**
+     * Check if Firebase services are available
+     */
+    fun isFirebaseAvailable(): Boolean {
+        return firestore != null && storage != null
+    }
+
+    /**
+     * Get current user email safely
+     */
+    fun getCurrentUserEmail(): String? {
+        return try {
+            AuthManager.getCurrentUser()?.email
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting current user email", e)
+            null
         }
     }
-}
