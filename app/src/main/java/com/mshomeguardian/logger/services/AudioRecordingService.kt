@@ -630,7 +630,7 @@ class AudioRecordingService : Service() {
                 "transcriptionStatus" to recording.transcriptionStatus.name,
                 "deviceId" to deviceId,
                 "uploadTime" to uploadTime,
-                "transcription" to recording.transcription
+                "transcription" to (recording.transcription ?: "")
             )
 
             val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
