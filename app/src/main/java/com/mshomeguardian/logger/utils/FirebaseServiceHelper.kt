@@ -45,12 +45,18 @@ object FirebaseServiceHelper {
                 e.message?.contains("UNAVAILABLE") == true -> {
                     Log.d(TAG, "$operationName temporarily unavailable - will retry automatically")
                 }
+
                 e.message?.contains("permission", ignoreCase = true) == true -> {
                     Log.w(TAG, "$operationName permission denied - check authentication and rules")
                 }
+
                 e.message?.contains("NOT_FOUND") == true -> {
-                    Log.w(TAG, "$operationName document not found - this is expected for new documents")
+                    Log.w(
+                        TAG,
+                        "$operationName document not found - this is expected for new documents"
+                    )
                 }
+
                 else -> {
                     Log.e(TAG, "$operationName failed: ${e.message}")
                 }
@@ -209,7 +215,8 @@ object FirebaseServiceHelper {
             operation = {
                 val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-                val messageId = messageData["messageId"] as? String ?: return@safeFirestoreOperation false
+                val messageId =
+                    messageData["messageId"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "messages")
 
                 firestoreInstance.collection(collectionPath)
@@ -237,7 +244,8 @@ object FirebaseServiceHelper {
             operation = {
                 val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-                val contactId = contactData["contactId"] as? String ?: return@safeFirestoreOperation false
+                val contactId =
+                    contactData["contactId"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "contacts")
 
                 firestoreInstance.collection(collectionPath)
@@ -291,7 +299,8 @@ object FirebaseServiceHelper {
             operation = {
                 val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
-                val recordingId = recordingData["recordingId"] as? String ?: return@safeFirestoreOperation false
+                val recordingId =
+                    recordingData["recordingId"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "audio_recordings")
 
                 firestoreInstance.collection(collectionPath)
@@ -419,3 +428,4 @@ object FirebaseServiceHelper {
             null
         }
     }
+}

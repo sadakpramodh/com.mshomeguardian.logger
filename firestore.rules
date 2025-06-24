@@ -9,7 +9,9 @@ service cloud.firestore {
     
     // Helper function to sanitize email (must match your app's sanitization)
     function getSanitizedEmail(email) {
-      return email.replace('.', '_dot_').replace('@', '_at_');
+      return email.replace('.', '_dot_').replace('@', '_at_')
+                  .replace('/', '_').replace('[', '_')
+                  .replace(']', '_').replace('*', '_').replace('?', '_');
     }
     
     // Helper function to check if user owns this email-based document
@@ -22,40 +24,9 @@ service cloud.firestore {
     match /users/{sanitizedEmail} {
       allow read, write: if isEmailOwner(sanitizedEmail);
       
-      // Device level: /users/{sanitized_email}/devices/{deviceId}
       match /devices/{deviceId} {
         allow read, write: if isEmailOwner(sanitizedEmail);
         
-        // Collections under device: call_logs, contacts, messages, weather, etc.
-        match /call_logs/{document} {
-          allow read, write: if isEmailOwner(sanitizedEmail);
-        }
-        
-        match /contacts/{document} {
-          allow read, write: if isEmailOwner(sanitizedEmail);
-        }
-        
-        match /messages/{document} {
-          allow read, write: if isEmailOwner(sanitizedEmail);
-        }
-        
-        match /weather/{document} {
-          allow read, write: if isEmailOwner(sanitizedEmail);
-        }
-        
-        match /locations/{document} {
-          allow read, write: if isEmailOwner(sanitizedEmail);
-        }
-        
-        match /audio_recordings/{document} {
-          allow read, write: if isEmailOwner(sanitizedEmail);
-        }
-        
-        match /phone_state/{document} {
-          allow read, write: if isEmailOwner(sanitizedEmail);
-        }
-        
-        // Allow any other collections under devices
         match /{collection}/{document} {
           allow read, write: if isEmailOwner(sanitizedEmail);
         }
