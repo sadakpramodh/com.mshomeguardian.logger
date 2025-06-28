@@ -9,100 +9,136 @@
 
 ## 📱 Overview
 
-Home Guardian Logger is a powerful Android application designed to provide comprehensive monitoring and logging capabilities for security and tracking purposes. The app securely collects and synchronizes various device activities to Firebase, including location data, call logs, SMS messages, contacts, and real-time audio transcription.
+Home Guardian Logger is a powerful Android application designed to provide comprehensive monitoring and logging capabilities for security and tracking purposes. The app securely collects and synchronizes various device activities to Firebase, including location data, call logs, SMS messages, contacts, and real-time audio transcription with offline speech recognition.
 
 ## ✨ Key Features
 
-### 🔐 **Authentication & Security**
-- **Custom Firebase Authentication** integration with email/password
-- **Automatic sign-in** with saved credentials
-- **Secure data access** with Firebase security rules
-- **User-specific data isolation** with email-based document structure
+### 🔐 **Custom Authentication System**
+- **Custom Firebase Authentication** with email/password (no FirebaseUI dependency)
+- **Automatic credential saving** and sign-in for seamless user experience
+- **Secure user isolation** with email-based Firebase document structure
+- **Password reset functionality** with validation and error handling
 
-### 📍 **Location Monitoring**
-- **Real-time location tracking** with high accuracy
-- **Background location monitoring** with foreground service
-- **Intelligent sync triggers** with distance thresholds
-- **Weather integration** for location-based weather data
-- **Adaptive sync intervals** based on time of day
+### 📍 **Intelligent Location Monitoring**
+- **Real-time location tracking** with high accuracy GPS
+- **Adaptive sync intervals** based on time of day (15min-1hr)
+- **Distance-based triggers** (1-meter threshold for meaningful updates)
+- **Background location service** with proper Android 14+ foreground service types
+- **Weather integration** for location-based weather data display
 
-### 📞 **Communication Logging**
-- **Call log synchronization** with contact information
-- **SMS/MMS message logging** with sender details
-- **Real-time detection** of new calls and messages with automatic sync
-- **Contact integration** with names and photos
-- **Threshold-based sync** (syncs after 3 new calls or messages)
+### 📞 **Smart Communication Logging**
+- **Threshold-based synchronization** (syncs after 3 new calls/messages)
+- **Real-time call/SMS detection** with automatic triggers
+- **Contact integration** with names, phone numbers, and photos
+- **Comprehensive metadata** including call duration, message body, timestamps
+- **Incremental sync** to avoid duplicate entries
 
-### 🎙️ **Audio Features**
-- **Continuous audio recording** with automatic segmentation (30-minute intervals)
-- **Real-time transcription** using Vosk offline speech recognition
-- **Multi-language support** (Telugu, English, Hindi, French, Spanish, German)
+### 🎙️ **Advanced Audio Features**
+- **30-minute audio recordings** with automatic file management
+- **Offline speech recognition** using Vosk (Telugu, English, Hindi, French, Spanish, German)
 - **Live transcription interface** for real-time speech-to-text
-- **Automatic cleanup** of old recordings to manage storage
+- **Intelligent storage management** with automatic cleanup of old recordings
+- **Firebase Storage integration** for secure cloud backup
 
-### 🔄 **Data Synchronization**
-- **Automatic cloud sync** to Firebase Firestore with new structure
-- **User-specific data organization**: `users/{email}/devices/{deviceId}/{collections}`
-- **File storage** to Firebase Storage
-- **Intelligent sync triggers** based on activity thresholds
-- **Background workers** with adaptive scheduling for reliable data processing
+### 🔄 **Optimized Data Synchronization**
+- **User-specific Firebase structure**: `users/{email}/devices/{deviceId}/{collections}`
+- **Adaptive WorkManager scheduling** with time-based frequency adjustments
+- **Battery-optimized background processing** with exponential backoff
+- **Crash prevention utilities** for robust operation
+- **Comprehensive error handling** and recovery mechanisms
 
-### 🏠 **Home Screen Widget**
-- **Real-time status display** with weather information
-- **Quick sync button** for manual synchronization
-- **Activity counters** showing recent data collection
-- **Last sync timestamp** for monitoring
+### 🏠 **Enhanced Home Screen Widget**
+- **Real-time weather display** with location-based data and weather icons
+- **Activity counters** showing recent data collection statistics
+- **Manual sync trigger** for immediate data synchronization
+- **Compact 4x2 layout** with comprehensive status information
+
+### 🛡️ **Robust Architecture & Security**
+- **MVVM Architecture** with Kotlin Coroutines and Room Database
+- **Crash prevention system** with safe operation utilities
+- **Memory optimization** with reduced buffer sizes and efficient cleanup
+- **Android 14+ compatibility** with proper foreground service permissions
+- **Secure Firestore rules** ensuring user data isolation
 
 ## 🛠️ Technical Architecture
 
 ### **Core Technologies**
-- **Kotlin** - Primary development language
-- **Android Architecture Components** - MVVM pattern
+- **Kotlin** - Primary development language with Coroutines
+- **Android Architecture Components** - MVVM pattern with Lifecycle-aware components
 - **Room Database** - Local data persistence with optimized indices
-- **WorkManager** - Background task scheduling with adaptive intervals
-- **Coroutines** - Asynchronous operations
-- **Firebase Suite** - Backend services with custom authentication
+- **WorkManager** - Intelligent background task scheduling with adaptive intervals
+- **Firebase Suite** - Custom authentication, Firestore, and Storage
+- **Vosk** - Offline speech recognition for multiple languages
 
-### **Key Components**
+### **Enhanced Data Layer**
+```
+📦 Optimized Data Layer
+├── 🗄️ Room Database (SQLite with indices)
+│   ├── LocationEntity (with timestamp indexing)
+│   ├── CallLogEntity (with phone number and timestamp indices)
+│   ├── MessageEntity (with comprehensive SMS/MMS data)
+│   ├── AudioRecordingEntity (with transcription status tracking)
+│   ├── DeviceInfoEntity (comprehensive device metadata)
+│   └── Migration support (v2 → v3 with performance optimizations)
+├── 🔥 Firebase Firestore (User-based structure)
+│   └── users/{sanitized_email}/devices/{deviceId}/{collections}
+│       ├── locations/ (GPS coordinates with weather data)
+│       ├── call_logs/ (Call history with contact info)
+│       ├── messages/ (SMS/MMS with contact resolution)
+│       ├── contacts/ (Contact information with phone/email)
+│       ├── audio_recordings/ (Audio metadata with transcription)
+│       ├── weather/ (Weather data for widget)
+│       └── device_info/ (Device metadata and registration)
+└── 📁 Firebase Storage (User-based file storage)
+    └── users/{sanitized_email}/devices/{deviceId}/audio/{filename}
+```
 
-#### **Data Layer**
+### **Intelligent Service Architecture**
 ```
-📦 Data Layer
-├── 🗄️ Room Database (SQLite)
-│   ├── LocationEntity
-│   ├── CallLogEntity
-│   ├── MessageEntity
-│   ├── AudioRecordingEntity
-│   └── DeviceInfoEntity
-├── 🔥 Firebase Firestore (Cloud) - New Structure
-│   └── users/{email}/devices/{deviceId}/{collections}
-└── 📁 Firebase Storage (Files)
-    └── users/{email}/devices/{deviceId}/audio/{filename}
-```
-
-#### **Service Architecture**
-```
-🔧 Background Services
-├── 📍 UnifiedMonitoringService (Location + Coordination)
-├── 🎙️ AudioRecordingService (30-min segments)
-├── 🔄 WorkManager Jobs (Adaptive Scheduling)
+🔧 Background Services (Android 14+ Compatible)
+├── 📍 LocationMonitoringService (FOREGROUND_SERVICE_LOCATION)
+│   ├── Distance-based triggering (1m threshold)
+│   ├── High-accuracy GPS with network fallback
+│   ├── Adaptive update intervals (5min-1hr)
+│   └── Weather data integration
+├── 🎙️ AudioRecordingService (FOREGROUND_SERVICE_MICROPHONE)
+│   ├── 30-minute recording segments
+│   ├── Automatic file management and cleanup
+│   ├── Memory-optimized audio buffering (5MB max)
+│   └── Crash prevention with retry logic
+├── 🔄 Adaptive WorkManager Jobs
 │   ├── CallLogWorker (threshold: 3 new calls)
 │   ├── MessageWorker (threshold: 3 new messages)
-│   ├── ContactsWorker (incremental sync)
-│   ├── WeatherWorker (location-based)
-│   ├── DeviceInfoWorker (device metadata)
-│   └── RecordingCleanupWorker (storage management)
-└── 🔐 AuthStateHandler (Custom auth management)
+│   ├── ContactsWorker (incremental sync, 50 contacts/batch)
+│   ├── WeatherWorker (location-based weather updates)
+│   ├── DeviceInfoWorker (device metadata sync)
+│   ├── RecordingCleanupWorker (storage management)
+│   └── TranscriptionWorker (audio processing and upload)
+└── 🔐 Enhanced Authentication System
+    ├── Custom AuthManager (no FirebaseUI dependency)
+    ├── AuthStateHandler (service lifecycle management)
+    ├── Credential management (secure storage and auto-signin)
+    └── DataSyncManager (authentication-aware operations)
 ```
 
-#### **Authentication Flow**
+### **Adaptive Scheduling System**
 ```
-🔐 Authentication System
-├── Custom AuthManager (Email/password auth)
-├── AuthStateHandler (Service lifecycle management)
-├── SignInActivity (Custom UI, no FirebaseUI)
-├── Credential saving (Auto sign-in)
-└── DataSyncManager (Authentication-aware sync)
+⏰ Time-Based Adaptive Intervals
+├── 🌙 Night Mode (22:00-06:00): Reduced frequency
+│   ├── Location: 60 minutes
+│   ├── Communication: 60 minutes
+│   ├── Contacts: 6 hours
+│   └── Weather: 2 hours
+├── 🏢 Work Hours (09:00-17:00): Normal frequency
+│   ├── Location: 30 minutes
+│   ├── Communication: 15 minutes
+│   ├── Contacts: 2 hours
+│   └── Weather: 1 hour
+└── 🌅 Evening/Morning: Balanced frequency
+    ├── Location: 20 minutes
+    ├── Communication: 20 minutes
+    ├── Contacts: 3 hours
+    └── Weather: 1.5 hours
 ```
 
 ## 🚀 Setup & Installation
@@ -110,10 +146,10 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 ### **Prerequisites**
 - Android Studio Arctic Fox or later
 - Android SDK API 26+ (Android 8.0)
-- Firebase project with Firestore and Storage enabled
+- Firebase project with Authentication, Firestore, and Storage
 - Google Services JSON configuration file
 
-### **Firebase Setup**
+### **Enhanced Firebase Setup**
 
 1. **Create Firebase Project**
    ```bash
@@ -122,55 +158,66 @@ Home Guardian Logger is a powerful Android application designed to provide compr
    ```
 
 2. **Enable Required Services**
-   - Authentication (Email/Password)
-   - Firestore Database
+   - Authentication (Email/Password provider)
+   - Firestore Database (Native mode)
    - Firebase Storage
 
 3. **Download Configuration**
-   - Download `google-services.json`
-   - Place in `app/` directory
+   ```bash
+   # Download google-services.json from Firebase Console
+   # Place in app/ directory (already in .gitignore)
+   ```
 
-4. **Configure Security Rules**
+4. **Configure Enhanced Security Rules**
+   
+   **Firestore Rules** (supports new user-based structure):
    ```javascript
-   // Firestore Rules (Updated for new structure)
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
+       
+       function isAuthenticated() {
+         return request.auth != null && request.auth.uid != null && request.auth.token.email != null;
+       }
+       
        function getSanitizedEmail(email) {
          return email.replace('.', '_dot_').replace('@', '_at_')
-                    .replace('/', '_').replace('[', '_')
-                    .replace(']', '_').replace('*', '_').replace('?', '_');
+                     .replace('/', '_').replace('[', '_')
+                     .replace(']', '_').replace('*', '_').replace('?', '_');
        }
        
-       function isOwner(userEmail) {
-         return request.auth != null && 
-                request.auth.token.email != null && 
-                getSanitizedEmail(request.auth.token.email) == userEmail;
+       function isEmailOwner(sanitizedEmail) {
+         return isAuthenticated() && 
+                getSanitizedEmail(request.auth.token.email) == sanitizedEmail;
        }
        
-       match /users/{userEmail} {
-         allow read, write: if isOwner(userEmail);
+       match /users/{sanitizedEmail} {
+         allow read, write: if isEmailOwner(sanitizedEmail);
          
          match /devices/{deviceId} {
-           allow read, write: if isOwner(userEmail);
+           allow read, write: if isEmailOwner(sanitizedEmail);
            
            match /{collection}/{document} {
-             allow read, write: if isOwner(userEmail);
+             allow read, write: if isEmailOwner(sanitizedEmail);
            }
          }
+       }
+       
+       match /{document=**} {
+         allow read, write: if false;
        }
      }
    }
    ```
 
+   **Storage Rules**:
    ```javascript
-   // Storage Rules
    rules_version = '2';
    service firebase.storage {
      match /b/{bucket}/o {
-       match /users/{userEmail}/devices/{deviceId}/{allPaths=**} {
+       match /users/{sanitizedEmail}/devices/{deviceId}/{allPaths=**} {
          allow read, write: if request.auth != null && 
-           request.auth.token.email.replace('.', '_dot_').replace('@', '_at_') == userEmail;
+           request.auth.token.email.replace('.', '_dot_').replace('@', '_at_') == sanitizedEmail;
        }
      }
    }
@@ -180,14 +227,14 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 
 1. **Clone Repository**
    ```bash
-   git clone https://github.com/yourusername/home-guardian-logger.git
+   git clone <repository-url>
    cd home-guardian-logger
    ```
 
 2. **Add Configuration Files**
    ```
    📁 app/
-   ├── google-services.json          # Firebase configuration
+   ├── google-services.json          # Firebase configuration (required)
    └── src/main/assets/
        └── model-te/                 # Telugu Vosk model (optional)
            ├── am/
@@ -202,298 +249,332 @@ Home Guardian Logger is a powerful Android application designed to provide compr
    ./gradlew assembleDebug
    ```
 
-### **Language Model Setup (Optional)**
+### **Vosk Language Models (Optional)**
 
 For offline transcription, download Vosk models:
 ```bash
-# Telugu model example
+# Example: Telugu model
 wget https://alphacephei.com/vosk/models/vosk-model-small-tel-0.4.zip
 unzip vosk-model-small-tel-0.4.zip
 mv vosk-model-small-tel-0.4/* app/src/main/assets/model-te/
+
+# Supported languages: Telugu (te), English (en), Hindi (hi), 
+# French (fr), Spanish (es), German (de)
 ```
 
-## 📋 Permissions Required
+## 📋 Comprehensive Permissions
 
-### **Runtime Permissions**
-- `ACCESS_FINE_LOCATION` - Location tracking
+### **Runtime Permissions (Android 6.0+)**
+- `ACCESS_FINE_LOCATION` - High-accuracy location tracking
+- `ACCESS_COARSE_LOCATION` - Network-based location
 - `ACCESS_BACKGROUND_LOCATION` - Background location (Android 10+)
-- `READ_CALL_LOG` - Call log access
-- `READ_SMS` - SMS message access
-- `READ_CONTACTS` - Contact information
+- `READ_CALL_LOG` - Call log access and monitoring
+- `READ_SMS` - SMS message reading
+- `READ_PHONE_STATE` - Phone state and carrier information
+- `RECEIVE_SMS` - Real-time SMS reception
+- `READ_CONTACTS` - Contact information with phone numbers
 - `RECORD_AUDIO` - Audio recording and transcription
 - `POST_NOTIFICATIONS` - Service notifications (Android 13+)
 
 ### **Foreground Service Permissions (Android 14+)**
-- `FOREGROUND_SERVICE_LOCATION` - Location service
-- `FOREGROUND_SERVICE_MICROPHONE` - Audio service
+- `FOREGROUND_SERVICE_LOCATION` - Location monitoring service
+- `FOREGROUND_SERVICE_MICROPHONE` - Audio recording service
 
 ### **Manifest Permissions**
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 ```
 
-## 🔧 Configuration
-
-### **Key Configuration Files**
-
-#### **gradle.properties**
-```properties
-android.useAndroidX=true
-android.enableJetifier=true
-kotlin.incremental=true
-org.gradle.jvmargs=-Xmx2048m
-org.gradle.daemon=true
-org.gradle.parallel=true
-org.gradle.caching=true
-```
+## 🔧 Advanced Configuration
 
 ### **Customizable Settings**
 
-#### **Data Collection Intervals (Adaptive)**
+#### **Adaptive Sync Intervals**
 ```kotlin
-// WorkerScheduler.kt - Adaptive based on time of day
-// Night mode (22:00-06:00): Reduced frequency
-// Work hours (09:00-17:00): Normal frequency  
-// Evening/morning: Balanced frequency
+// WorkerScheduler.kt - Time-based adaptive scheduling
+// Night mode (22:00-06:00): 1-hour intervals
+// Work hours (09:00-17:00): 15-30 minute intervals  
+// Evening/morning: 20-minute intervals
 ```
 
-#### **Audio Recording Settings**
+#### **Audio Recording Configuration**
 ```kotlin
-// AudioRecordingService.kt
+// AudioRecordingService.kt - Optimized settings
 private const val RECORDING_DURATION = 30 * 60 * 1000L // 30 minutes
-private const val SAMPLING_RATE_IN_HZ = 16000 // 16kHz
-private const val MAX_BUFFER_SIZE = 5 * 1024 * 1024  // 5MB
+private const val SAMPLING_RATE_IN_HZ = 16000 // 16kHz for Vosk
+private const val MAX_BUFFER_SIZE = 5 * 1024 * 1024  // 5MB (optimized)
+private const val MAX_RETRY_COUNT = 5 // Reduced retry attempts
 ```
 
 #### **Sync Thresholds**
 ```kotlin
-// Automatic sync triggers
+// Threshold-based automatic sync triggers
 private const val CALL_COUNT_THRESHOLD = 3 // Sync after 3 new calls
 private const val MESSAGE_COUNT_THRESHOLD = 3 // Sync after 3 new messages
+private const val CONTACTS_SYNC_LIMIT = 50 // Process 50 contacts per batch
 ```
 
-## 📊 Data Structure
+#### **Storage Management**
+```kotlin
+// RecordingCleanupWorker.kt - Automatic cleanup
+private const val MAX_RECORDING_AGE_DAYS = 30L  // Keep recordings for 30 days
+private const val MAX_STORAGE_USAGE_BYTES = 1024L * 1024L * 1024L  // 1GB maximum
+```
 
-### **New Firestore Collections Structure**
+## 📊 Enhanced Data Structure
+
+### **Firestore Collections Structure** (New User-Based)
 ```
 📁 Firestore Database
 └── users/{sanitized_email}/
     └── devices/{deviceId}/
-        ├── 📍 locations/          # GPS coordinates
-        ├── 📞 call_logs/         # Call history
-        ├── 💬 messages/          # SMS/MMS data
-        ├── 👥 contacts/          # Contact information
-        ├── 🎙️ audio_recordings/  # Audio metadata
-        ├── 🌤️ weather/           # Weather data
-        └── 📱 device_info/       # Device metadata
+        ├── 📍 locations/          # GPS coordinates with weather
+        ├── 📞 call_logs/         # Call history with contact info
+        ├── 💬 messages/          # SMS/MMS with contact resolution
+        ├── 👥 contacts/          # Contact info with phone/email
+        ├── 🎙️ audio_recordings/  # Audio metadata with transcription
+        ├── 🌤️ weather/           # Weather data for widget
+        └── 📱 device_info/       # Device registration and metadata
 ```
 
-### **Local Database Schema**
+### **Optimized Local Database Schema**
 ```sql
--- Optimized with performance indices
+-- Location table with performance index
 CREATE TABLE location_table (
     timestamp INTEGER PRIMARY KEY,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL
 );
-
 CREATE INDEX index_location_timestamp ON location_table(timestamp);
 
--- Audio recordings with transcription status
+-- Audio recordings with transcription tracking
 CREATE TABLE audio_recordings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     recordingId TEXT UNIQUE NOT NULL,
     filePath TEXT NOT NULL,
+    fileName TEXT NOT NULL,
     startTime INTEGER NOT NULL,
     endTime INTEGER NOT NULL,
-    transcription TEXT,
+    duration INTEGER NOT NULL,
+    fileSize INTEGER NOT NULL,
     transcriptionStatus TEXT DEFAULT 'PENDING',
-    uploadedToCloud INTEGER DEFAULT 0
+    transcription TEXT,
+    transcriptionLanguage TEXT DEFAULT 'te-IN',
+    uploadedToCloud INTEGER DEFAULT 0,
+    deviceId TEXT NOT NULL
 );
+
+-- Call logs with comprehensive metadata
+CREATE INDEX index_call_logs_timestamp_uploaded ON call_logs(timestamp, uploadedToCloud);
+CREATE INDEX index_messages_timestamp_uploaded ON message_logs(timestamp, uploadedToCloud);
 ```
 
-## 🎨 User Interface
+## 🎨 Enhanced User Interface
 
-### **Main Activity Features**
-- **Comprehensive permission management** with step-by-step guidance
-- **Service status monitoring** with real-time updates
-- **Manual sync triggers** for immediate data upload
-- **Custom authentication management** with sign-in/sign-out
-- **Recording controls** for audio capture
-- **Data collection status** showing recent activity
+### **MainActivity Features**
+- **Custom authentication management** with email/password validation
+- **Comprehensive permission handling** for Android 14+ compatibility
+- **Real-time service status monitoring** with detailed activity counters
+- **Manual sync triggers** with progress feedback
+- **Battery optimization guidance** for reliable background operation
 
-### **Live Transcription**
-- **Real-time speech recognition** with Vosk
+### **Live Transcription Activity**
+- **Multi-language support** with offline Vosk models
+- **Real-time speech recognition** with status indicators
 - **Language switching** between supported languages
-- **Text output display** with copy/save functionality
-- **Audio visualization** with recording status
+- **Text output management** with copy/save functionality
 
 ### **Custom Sign-In Activity**
 - **Email/password authentication** without FirebaseUI dependency
-- **Account creation** with password validation
-- **Password reset** functionality
-- **Automatic credential saving** for seamless sign-in
+- **Account creation** with comprehensive validation
+- **Password reset** with error handling
+- **Automatic credential saving** for seamless experience
 
-### **Home Screen Widget**
-- **Compact status display** (4x2 grid) with weather
-- **Weather information** with location-based data and icons
-- **Activity counters** for recent data collection
-- **Quick sync button** for manual updates
+### **Enhanced Home Screen Widget**
+- **Weather display** with location-based data and weather icons
+- **Activity counters** for recent data collection (last 24 hours)
+- **Manual sync button** for immediate synchronization
+- **Compact 4x2 grid layout** with comprehensive status information
 
-## 🔒 Security Features
+## 🔒 Advanced Security Features
 
 ### **Data Protection**
-- **User-specific data isolation** with email-based document structure
-- **Authentication-gated access** to all data with custom rules
-- **Device-specific collections** with unique identifiers
-- **Secure credential storage** with auto-login capability
+- **User-specific data isolation** with email-based Firebase structure
+- **Authentication-gated access** with custom security rules
+- **Device-specific collections** with unique persistent identifiers
+- **Secure credential storage** with automatic sign-in capability
 
 ### **Privacy Considerations**
-- **Local processing** for transcription (offline Vosk)
+- **Offline processing** for transcription (no cloud dependencies)
 - **Minimal data collection** - only necessary information
-- **User-controlled recording** with manual start/stop
-- **Transparent logging** with detailed status updates
-- **Automatic cleanup** of old recordings
+- **User-controlled recording** with manual start/stop controls
+- **Transparent status reporting** with detailed activity logs
+- **Automatic cleanup** of old recordings with configurable retention
 
-## 🧪 Testing
+### **Crash Prevention System**
+- **Comprehensive error handling** with safe operation utilities
+- **Service recovery mechanisms** with exponential backoff
+- **Memory management** with optimized buffer sizes
+- **Permission validation** before critical operations
 
-### **Unit Tests**
+## 🧪 Testing & Validation
+
+### **Automated Testing**
 ```bash
+# Unit tests
 ./gradlew test
-```
 
-### **Instrumentation Tests**
-```bash
+# Instrumentation tests
 ./gradlew connectedAndroidTest
 ```
 
 ### **Manual Testing Checklist**
-- [ ] Custom authentication flow (sign-up, sign-in, sign-out)
-- [ ] Permission requests with Android 14+ support
-- [ ] Location tracking with adaptive intervals
-- [ ] Audio recording with 30-minute segments
-- [ ] Data synchronization to new Firebase structure
-- [ ] Widget functionality with weather display
-- [ ] Background service persistence
-- [ ] Threshold-based sync triggers
+- [ ] Custom authentication flow (sign-up, sign-in, sign-out, password reset)
+- [ ] Permission handling with Android 14+ foreground service permissions
+- [ ] Location tracking with adaptive intervals and distance thresholds
+- [ ] Audio recording with 30-minute segments and automatic cleanup
+- [ ] Data synchronization with threshold-based triggers
+- [ ] Widget functionality with weather display and activity counters
+- [ ] Background service persistence and crash recovery
+- [ ] Firebase structure validation with user-based collections
+
+### **Sync Testing Tools**
+```kotlin
+// Built-in testing utilities
+SyncTestHelper.runSyncTest(context) // Comprehensive sync validation
+SyncTestHelper.testFirebaseUpload(context) // Firebase connectivity test
+DataSyncManager.testSync(context, "calls") // Test specific sync types
+FirebaseStructureTestHelper.testExactStructure(context) // Structure validation
+```
 
 ## 📚 Dependencies
 
-### **Core Libraries**
+### **Core Libraries** (Optimized)
 ```gradle
-// Android Architecture
+// Android Architecture (Latest stable versions)
 implementation 'androidx.room:room-runtime:2.6.0'
 implementation 'androidx.work:work-runtime-ktx:2.8.1'
 implementation 'androidx.lifecycle:lifecycle-service:2.6.1'
 
-// Firebase (Optimized)
+// Firebase (Optimized BOM approach)
 implementation platform('com.google.firebase:firebase-bom:33.0.0')
 implementation 'com.google.firebase:firebase-firestore'
 implementation 'com.google.firebase:firebase-auth'
 implementation 'com.google.firebase:firebase-storage'
 
-// Speech Recognition
+// Offline Speech Recognition
 implementation 'com.alphacephei:vosk-android:0.3.47'
 implementation 'net.java.dev.jna:jna:5.9.0@aar'
 
 // Location Services
 implementation 'com.google.android.gms:play-services-location:21.0.1'
 
-// Networking
+// Networking (Weather API)
 implementation 'com.squareup.okhttp3:okhttp:4.11.0'
 ```
 
-## 🚨 Troubleshooting
+## 🚨 Troubleshooting Guide
 
 ### **Common Issues**
 
-#### **Firestore Sync Issues**
+#### **Authentication Issues**
 ```kotlin
-// Check user authentication
-if (!AuthManager.isSignedIn()) {
-    // User needs to sign in
-}
+// Check custom authentication status
+AuthManager.isSignedIn() // Verify sign-in state
+AuthManager.getCurrentUser()?.email // Get current user email
 
-// Verify Firebase configuration
-if (!FirebaseServiceHelper.isFirebaseAvailable()) {
-    // Check google-services.json placement
-}
-
-// Check security rules
-// Ensure rules match the new user-based structure
+// Clear saved credentials if needed
+AuthManager.clearSavedCredentials(context)
 ```
 
-#### **Permission Denied Errors**
+#### **Firebase Sync Issues**
 ```kotlin
-// For Android 14+, check foreground service permissions
-FOREGROUND_SERVICE_LOCATION
-FOREGROUND_SERVICE_MICROPHONE
+// Verify Firebase availability
+FirebaseServiceHelper.isFirebaseAvailable()
 
-// Grant all required permissions in Android settings
-// Check target SDK compatibility
+// Check user-based structure
+val sanitizedEmail = FirebaseServiceHelper.sanitizeEmailForFirestore(userEmail)
+// Expected path: users/{sanitized_email}/devices/{deviceId}/{collection}
+```
+
+#### **Permission Issues (Android 14+)**
+```kotlin
+// Verify foreground service permissions
+FOREGROUND_SERVICE_LOCATION // Required for location service
+FOREGROUND_SERVICE_MICROPHONE // Required for audio service
+
+// Check permission status
+CrashPreventionUtils.PermissionStatus.generateReport(context)
 ```
 
 #### **Background Service Issues**
 ```kotlin
-// Disable battery optimization
-// Check Android background restrictions
-// Verify foreground service implementation with proper types
+// Verify battery optimization settings
+// Settings > Apps > Home Guardian > Battery > Unrestricted
+
+// Check adaptive sync intervals
+WorkerScheduler.getAdaptiveIntervals() // Time-based frequency
 ```
 
-#### **Build Errors**
-```bash
-# Clean and rebuild
-./gradlew clean
-./gradlew assembleDebug
+### **Debug Tools**
+```kotlin
+// Comprehensive sync testing
+SyncTestHelper.runSyncTest(context)
+SyncTestHelper.getBasicSyncInfo(context)
 
-# Clear Gradle cache
-rm -rf ~/.gradle/caches/
+// Performance monitoring
+OptimizedLogger.d(TAG, "Performance metrics") // Debug logging
+DataSyncManager.getSyncStatistics(context) // Sync statistics
 ```
 
-## 📈 Performance Optimization
+## 📈 Performance Optimizations
 
 ### **Battery Optimization**
-- **Adaptive sync intervals** based on time of day (night: 1hr, work: 15min, evening: 20min)
-- **Threshold-based sync triggers** to minimize unnecessary uploads
+- **Adaptive sync intervals** with time-based frequency adjustment
+- **Threshold-based triggers** to minimize unnecessary network calls
+- **Battery-aware scheduling** with WorkManager constraints
+- **Optimized location tracking** with distance-based updates
 - **Intelligent background service management** with proper lifecycle handling
-- **Efficient location tracking** with distance thresholds (1 meter)
-
-### **Storage Management**
-- **Automatic cleanup** of old recordings (30 days retention)
-- **Storage limit enforcement** (1GB maximum for recordings)
-- **Orphaned file cleanup** for better storage efficiency
-- **Incremental sync** to reduce bandwidth usage
 
 ### **Memory Management**
-- **Optimized audio buffering** (5MB max buffer, reduced from 10MB)
-- **Efficient database queries** with proper indices
-- **Resource cleanup** on service destruction
-- **Wake lock management** for critical operations only
+- **Reduced audio buffer sizes** (5MB maximum, down from 10MB)
+- **Efficient database queries** with performance indices
+- **Automatic resource cleanup** with proper lifecycle management
+- **Crash prevention utilities** for robust operation
+
+### **Storage Management**
+- **Automatic cleanup** with configurable retention (30 days)
+- **Storage limit enforcement** (1GB maximum for recordings)
+- **Incremental sync** to reduce bandwidth usage
+- **Orphaned file cleanup** for efficient storage usage
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+We welcome contributions! Please follow these guidelines:
 
 ### **Development Setup**
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+2. Create a feature branch with descriptive name
+3. Follow Kotlin coding conventions
+4. Add comprehensive tests for new functionality
+5. Update documentation for API changes
+6. Submit pull request with detailed description
 
-### **Code Style**
+### **Code Style Guidelines**
 - Follow [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
 - Use meaningful variable and function names
-- Add comprehensive documentation for public APIs
+- Add KDoc documentation for public APIs
 - Maintain consistent formatting with provided `.editorconfig`
+- Use OptimizedLogger for all logging operations
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📞 Support
+## 📞 Support & Contact
 
 For support and questions:
 - **Issues**: [GitHub Issues](https://github.com/yourusername/home-guardian-logger/issues)
@@ -502,54 +583,64 @@ For support and questions:
 
 ## 🔄 Changelog
 
-### **Version 1.1.0 (Current)**
-- **NEW**: Custom authentication system (no FirebaseUI dependency)
-- **NEW**: User-specific data structure (`users/{email}/devices/{deviceId}`)
-- **IMPROVED**: Adaptive sync intervals based on time of day
-- **IMPROVED**: Threshold-based sync triggers (3 calls/messages)
-- **IMPROVED**: Memory optimization (reduced buffer sizes)
-- **IMPROVED**: Storage management with automatic cleanup
-- **IMPROVED**: Android 14+ compatibility with proper permissions
-- **FIXED**: Sync issues with proper Firebase structure
-- **FIXED**: Background service reliability
-- **FIXED**: Widget weather display with icons
+### **Version 2.0.0 (Current)**
+- **NEW**: Custom authentication system (removed FirebaseUI dependency)
+- **NEW**: User-specific Firebase structure (`users/{email}/devices/{deviceId}`)
+- **NEW**: Crash prevention utilities with comprehensive error handling
+- **NEW**: Enhanced weather widget with location-based data and icons
+- **IMPROVED**: Adaptive sync intervals based on time of day (15min-1hr)
+- **IMPROVED**: Threshold-based sync triggers (3 calls/messages) for efficiency
+- **IMPROVED**: Memory optimization with reduced buffer sizes and cleanup
+- **IMPROVED**: Android 14+ compatibility with proper foreground service permissions
+- **IMPROVED**: Storage management with automatic cleanup and size limits
+- **IMPROVED**: Comprehensive permission handling with step-by-step guidance
+- **FIXED**: Background service reliability with proper lifecycle management
+- **FIXED**: Firebase structure consistency with user isolation
+- **OPTIMIZED**: Database queries with performance indices
+- **OPTIMIZED**: WorkManager scheduling with battery-aware constraints
+
+### **Version 1.1.0**
+- Custom authentication system implementation
+- User-specific data structure migration
+- Adaptive sync intervals
+- Memory optimization improvements
 
 ### **Version 1.0.0**
 - Initial release with core monitoring features
 - Firebase integration and authentication
 - Offline speech recognition with Vosk
 - Background service implementation
-- Home screen widget
-- Multi-language transcription support
 
-## 🔧 Current Sync Status
+## 🔧 Current System Status
 
-### **Working Features**
-- ✅ Location tracking and sync
-- ✅ Custom authentication system
-- ✅ Audio recording with 30-minute segments
-- ✅ Live transcription with Vosk
-- ✅ Widget with weather display
-- ✅ Adaptive background workers
+### **Fully Operational Features**
+- ✅ **Custom Authentication**: Email/password with credential saving
+- ✅ **Location Tracking**: Real-time GPS with adaptive intervals
+- ✅ **Audio Recording**: 30-minute segments with automatic cleanup
+- ✅ **Live Transcription**: Offline Vosk with multi-language support
+- ✅ **Weather Widget**: Location-based data with weather icons
+- ✅ **Background Services**: Android 14+ compatible with proper permissions
+- ✅ **Crash Prevention**: Comprehensive error handling and recovery
 
-### **Data Sync Status**
-- ✅ **Location Data**: Real-time sync with new structure
-- ⚠️ **Call Logs**: Threshold-based sync (after 3 new calls)
-- ⚠️ **Messages**: Threshold-based sync (after 3 new messages)  
-- ⚠️ **Contacts**: Incremental sync for new/changed contacts
-- ✅ **Audio Recordings**: Upload to new storage structure
-- ✅ **Device Info**: Sync on first run and changes
-- ✅ **Weather Data**: Regular updates for widget
+### **Data Synchronization Status**
+- ✅ **Location Data**: Real-time sync with weather integration
+- ✅ **Device Information**: Automatic registration and metadata sync
+- ✅ **Audio Recordings**: Upload with transcription metadata
+- ⚡ **Call Logs**: Threshold-based sync (3 new calls trigger)
+- ⚡ **Messages**: Threshold-based sync (3 new messages trigger)
+- ⚡ **Contacts**: Incremental sync (50 contacts per batch)
+- ✅ **Weather Data**: Regular updates for widget display
 
-### **Known Issues Being Addressed**
-- Call logs and messages require manual sync or reaching threshold
-- Contact sync optimization for large contact lists
-- Background location permission handling on newer Android versions
-
----
-
-**⚠️ Disclaimer**: This application is designed for legitimate monitoring purposes. Users are responsible for complying with applicable laws and regulations regarding privacy and data collection in their jurisdiction.
+### **Performance Metrics**
+- 🔋 **Battery Usage**: Optimized with adaptive scheduling
+- 💾 **Storage**: Auto-cleanup with 1GB limit and 30-day retention
+- 📡 **Network**: Threshold-based sync reduces unnecessary calls
+- 🏃 **Performance**: Memory-optimized with 5MB audio buffers
 
 ---
 
-Made with ❤️ for enhanced device monitoring and security.
+**⚠️ Important Notice**: This application is designed for legitimate monitoring purposes. Users are responsible for complying with applicable laws and regulations regarding privacy and data collection in their jurisdiction. Ensure proper consent and legal compliance before deployment.
+
+---
+
+**Made with ❤️ for comprehensive device monitoring and enhanced security.**
