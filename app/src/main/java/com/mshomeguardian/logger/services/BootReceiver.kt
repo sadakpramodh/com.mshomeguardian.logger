@@ -15,7 +15,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-
 class BootReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "BootReceiver"
@@ -38,7 +37,7 @@ class BootReceiver : BroadcastReceiver() {
                     CoroutineScope(Dispatchers.IO).launch {
                         FirebaseServiceHelper.uploadSystemEvent(userEmail, deviceId, data)
                     }
-
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to log boot event", e)
             }

@@ -11,7 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-
 class ShutdownReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "ShutdownReceiver"
@@ -30,7 +29,7 @@ class ShutdownReceiver : BroadcastReceiver() {
 
             CoroutineScope(Dispatchers.IO).launch {
                 FirebaseServiceHelper.uploadSystemEvent(userEmail, deviceId, data)
-
+            }
         }
     }
 }
