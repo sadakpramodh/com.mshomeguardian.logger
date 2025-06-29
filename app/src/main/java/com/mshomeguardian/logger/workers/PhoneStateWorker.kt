@@ -95,7 +95,24 @@ class PhoneStateWorker(
             // Call state if supported
             phoneStateMap["callState"] = getCallStateName(tm.callState)
 
-            // Signal strength will be collected in a separate worker or with a listener
+            // Signal strength (best effort)
+            val cellInfo = tm.allCellInfo
+            if (!cellInfo.isNullOrEmpty()) {
+                val level = cellInfo[0].cellSignalStrength.dbm
+                phoneStateMap["signalStrengthDbm"] = level
+            }
+
+            // WiFi status
+            val wifiManager = applicationContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            phoneStateMap["wifiEnabled"] = wifiManager?.isWifiEnabled ?: false
+
+            // Bluetooth status
+            val btAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+            phoneStateMap["bluetoothEnabled"] = btAdapter?.isEnabled ?: false
+
+            // NFC status
+            val nfcAdapter = android.nfc.NfcAdapter.getDefaultAdapter(applicationContext)
+            phoneStateMap["nfcEnabled"] = nfcAdapter?.isEnabled ?: false
         } catch (e: Exception) {
             Log.e(TAG, "Error collecting phone state info", e)
             phoneStateMap["error"] = e.message ?: "unknown error"
