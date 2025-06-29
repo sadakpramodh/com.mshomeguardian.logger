@@ -47,6 +47,14 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 - **Crash prevention utilities** for robust operation
 - **Comprehensive error handling** and recovery mechanisms
 
+### 📊 **Device Usage & Health Monitoring**
+- **Installed app inventory** with update frequency detection
+- **Daily app usage statistics** from UsageStatsManager
+- **Network state tracking** including WiFi, Bluetooth, NFC and signal strength
+- **Battery status logging** with charging source and level history
+- **System metrics** including storage, memory, CPU and display details
+- **Sensor data** from accelerometer, gyroscope, light, proximity and more
+
 ### 🏠 **Enhanced Home Screen Widget**
 - **Real-time weather display** with location-based data and weather icons
 - **Activity counters** showing recent data collection statistics
@@ -598,6 +606,7 @@ For support and questions:
 - **FIXED**: Firebase structure consistency with user isolation
 - **OPTIMIZED**: Database queries with performance indices
 - **OPTIMIZED**: WorkManager scheduling with battery-aware constraints
+- **NEW**: Installed apps, usage, network, battery, system metrics and sensor logging
 
 ### **Version 1.1.0**
 - Custom authentication system implementation

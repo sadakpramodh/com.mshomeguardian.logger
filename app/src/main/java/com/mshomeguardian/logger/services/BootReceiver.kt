@@ -8,6 +8,8 @@ import android.util.Log
 import com.mshomeguardian.logger.workers.WorkerScheduler
 import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.LocationMonitoringService
+import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -17,6 +19,21 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED && context != null) {
             Log.d(TAG, "Device booted. Starting services...")
+
+            try {
+                val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
+                if (userEmail != null) {
+                    val deviceId = DeviceIdentifier.getPersistentDeviceId(context)
+                    val data = hashMapOf<String, Any>(
+                        "event" to "boot",
+                        "timestamp" to System.currentTimeMillis(),
+                        "deviceId" to deviceId
+                    )
+                    FirebaseServiceHelper.uploadSystemEvent(userEmail, deviceId, data)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to log boot event", e)
+            }
 
             if (AuthManager.isSignedIn()) {
                 // Schedule all worker jobs
