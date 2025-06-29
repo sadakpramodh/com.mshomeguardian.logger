@@ -6,9 +6,11 @@ import android.content.Intent
 import android.util.Log
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+
 
 class ShutdownReceiver : BroadcastReceiver() {
     companion object {
@@ -25,9 +27,10 @@ class ShutdownReceiver : BroadcastReceiver() {
                 "timestamp" to System.currentTimeMillis(),
                 "deviceId" to deviceId
             )
+
             CoroutineScope(Dispatchers.IO).launch {
                 FirebaseServiceHelper.uploadSystemEvent(userEmail, deviceId, data)
-            }
+
         }
     }
 }
