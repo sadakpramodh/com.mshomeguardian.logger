@@ -11,6 +11,11 @@ import com.mshomeguardian.logger.utils.LocationMonitoringService
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+
 class BootReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "BootReceiver"
@@ -29,8 +34,11 @@ class BootReceiver : BroadcastReceiver() {
                         "timestamp" to System.currentTimeMillis(),
                         "deviceId" to deviceId
                     )
-                    FirebaseServiceHelper.uploadSystemEvent(userEmail, deviceId, data)
-                }
+
+                    CoroutineScope(Dispatchers.IO).launch {
+                        FirebaseServiceHelper.uploadSystemEvent(userEmail, deviceId, data)
+                    }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to log boot event", e)
             }
