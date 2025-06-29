@@ -374,6 +374,174 @@ object FirebaseServiceHelper {
     }
 
     /**
+     * Upload installed app information
+     */
+    suspend fun uploadInstalledApp(
+        userEmail: String,
+        deviceId: String,
+        appData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val packageName = appData["packageName"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "installed_apps")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(packageName)
+                    .set(appData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Installed app uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload installed app",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload app usage statistics
+     */
+    suspend fun uploadAppUsage(
+        userEmail: String,
+        deviceId: String,
+        usageData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val packageName = usageData["packageName"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "app_usage")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(packageName)
+                    .set(usageData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "App usage uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload app usage",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload battery status information
+     */
+    suspend fun uploadBatteryStatus(
+        userEmail: String,
+        deviceId: String,
+        batteryData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = batteryData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "battery_status")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(batteryData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Battery status uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload battery status",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload system metrics information (storage, memory, cpu, display, security)
+     */
+    suspend fun uploadSystemMetrics(
+        userEmail: String,
+        deviceId: String,
+        metricsData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = metricsData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "system_metrics")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(metricsData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "System metrics uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload system metrics",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload sensor data from available sensors
+     */
+    suspend fun uploadSensorData(
+        userEmail: String,
+        deviceId: String,
+        sensorData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = sensorData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "sensor_data")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(sensorData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Sensor data uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload sensor data",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload system events like boot or shutdown
+     */
+    suspend fun uploadSystemEvent(
+        userEmail: String,
+        deviceId: String,
+        eventData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val timestamp = eventData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "system_events")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                    .set(eventData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "System event uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload system event",
+            defaultValue = false
+        )
+    }
+
+    /**
      * Update device last active timestamp
      */
     suspend fun updateDeviceLastActive(userEmail: String, deviceId: String): Boolean {
