@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import com.mshomeguardian.logger.utils.OptimizedLogger
 import com.mshomeguardian.logger.workers.InstalledAppsWorker
 import com.mshomeguardian.logger.workers.AppUsageWorker
+import com.mshomeguardian.logger.workers.NetworkUsageWorker
 import com.mshomeguardian.logger.workers.BatteryStatusWorker
 import com.mshomeguardian.logger.workers.SystemMetricsWorker
 import com.mshomeguardian.logger.workers.SensorDataWorker
@@ -33,6 +34,7 @@ object WorkerScheduler {
     private const val RECORDING_CLEANUP_WORK_NAME = "OptimizedRecordingCleanupWork"
     private const val INSTALLED_APPS_WORK_NAME = "OptimizedInstalledAppsWork"
     private const val APP_USAGE_WORK_NAME = "OptimizedAppUsageWork"
+    private const val NETWORK_USAGE_WORK_NAME = "OptimizedNetworkUsageWork"
     private const val BATTERY_STATUS_WORK_NAME = "OptimizedBatteryStatusWork"
     private const val SYSTEM_METRICS_WORK_NAME = "OptimizedSystemMetricsWork"
     private const val SENSOR_DATA_WORK_NAME = "OptimizedSensorDataWork"
@@ -55,6 +57,7 @@ object WorkerScheduler {
             scheduleWeatherWork(context, intervals.weatherInterval)
             scheduleInstalledAppsWork(context, 720L)
             scheduleAppUsageWork(context, 60L)
+            scheduleNetworkUsageWork(context, 60L)
             scheduleBatteryStatusWork(context, 30L)
             scheduleSystemMetricsWork(context, 60L)
             scheduleSensorDataWork(context, 30L)
@@ -298,6 +301,29 @@ object WorkerScheduler {
             OptimizedLogger.d(TAG, "App usage worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
             OptimizedLogger.e(TAG, "Error scheduling app usage worker", e)
+        }
+    }
+
+    private fun scheduleNetworkUsageWork(context: Context, intervalMinutes: Long) {
+        try {
+            val constraints = createOptimizedConstraints()
+
+            val request = PeriodicWorkRequestBuilder<NetworkUsageWorker>(
+                intervalMinutes, TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                NETWORK_USAGE_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+
+            OptimizedLogger.d(TAG, "Network usage worker scheduled (${intervalMinutes}m interval)")
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error scheduling network usage worker", e)
         }
     }
 
