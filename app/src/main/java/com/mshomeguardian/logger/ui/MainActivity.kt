@@ -39,10 +39,11 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 import com.mshomeguardian.logger.utils.OptimizedLogger
+import com.mshomeguardian.logger.utils.CrashPreventionUtils
 import kotlinx.coroutines.delay
 
 /**
- * MainActivity with custom authentication (no FirebaseUI dependency)
+ * Crash-Safe MainActivity with comprehensive permission handling
  */
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
@@ -77,14 +78,16 @@ class MainActivity : AppCompatActivity() {
     private val updateHandler = Handler(Looper.getMainLooper())
     private val updateRunnable = object : Runnable {
         override fun run() {
-            safeExecute("updateDataCollectionStatus") {
+            CrashPreventionUtils.ErrorHandling.safeExecute(
+                TAG, "updateDataCollectionStatus", Unit
+            ) {
                 updateDataCollectionStatus()
             }
             updateHandler.postDelayed(this, STATUS_UPDATE_INTERVAL)
         }
     }
 
-    // Comprehensive permission arrays
+    // Permission arrays with crash-safe access
     private val corePermissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -120,9 +123,12 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        safeExecute("onCreate") {
-            // Check authentication first
-            if (!AuthManager.isSignedIn()) {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onCreate", Unit) {
+            // Initialize crash prevention system first
+            CrashPreventionUtils.initialize(this)
+
+            // Check authentication with crash protection
+            if (!safeAuthCheck()) {
                 OptimizedLogger.d(TAG, "User not signed in, starting SignInActivity")
                 startSignInActivity()
                 return@safeExecute
@@ -131,240 +137,250 @@ class MainActivity : AppCompatActivity() {
             OptimizedLogger.d(TAG, "User signed in: ${AuthManager.getCurrentUser()?.email}")
             setContentView(R.layout.activity_main)
 
-            initializeUI()
-            checkBatteryOptimizations()
+            // Initialize UI with crash protection
+            initializeUIWithCrashProtection()
+
+            // Check battery optimizations safely
+            safeCheckBatteryOptimizations()
         }
     }
 
     /**
-     * Fail-safe execution wrapper
+     * Safe authentication check that never crashes
      */
-    private fun safeExecute(operation: String, action: () -> Unit) {
-        try {
-            action()
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error in $operation", e)
-            handleError("Error in $operation: ${e.message}")
+    private fun safeAuthCheck(): Boolean {
+        return CrashPreventionUtils.ErrorHandling.safeExecute(
+            TAG, "safeAuthCheck", false
+        ) {
+            AuthManager.isSignedIn()
         }
     }
 
     /**
-     * Handle errors gracefully without crashing
+     * Initialize UI with comprehensive crash protection
      */
-    private fun handleError(message: String) {
-        runOnUiThread {
+    private fun initializeUIWithCrashProtection() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "initializeUI", Unit) {
             try {
-                Toast.makeText(this, "Error: $message", Toast.LENGTH_LONG).show()
-                OptimizedLogger.e(TAG, message)
+                // Initialize UI elements with null checks
+                statusText = findViewById(R.id.statusText)
+                permissionsButton = findViewById(R.id.permissionsButton)
+                deviceIdText = findViewById(R.id.deviceIdText)
+                accountInfoText = findViewById(R.id.accountInfoText)
+                syncButton = findViewById(R.id.syncButton)
+                recordingButton = findViewById(R.id.recordingButton)
+                liveTranscriptionButton = findViewById(R.id.liveTranscriptionButton)
+                signOutButton = findViewById(R.id.signOutButton)
+
+                // Status text views with fallback
+                locationStatusText = findViewById(R.id.locationStatusText)
+                callLogsStatusText = findViewById(R.id.callLogsStatusText)
+                messagesStatusText = findViewById(R.id.messagesStatusText)
+                audioStatusText = findViewById(R.id.audioStatusText)
+
+                // Set device ID safely
+                val deviceId = CrashPreventionUtils.ErrorHandling.safeExecute(
+                    TAG, "getDeviceId", "Unknown"
+                ) {
+                    DeviceIdentifier.getPersistentDeviceId(applicationContext)
+                }
+                deviceIdText.text = "Device ID: $deviceId"
+
+                // Display current user email safely
+                val userEmail = CrashPreventionUtils.ErrorHandling.safeExecute(
+                    TAG, "getCurrentUser", "Unknown"
+                ) {
+                    AuthManager.getCurrentUser()?.email ?: "Unknown"
+                }
+                accountInfoText.text = "Account: $userEmail"
+
+                setupButtonListeners()
+                updatePermissionStatusSafely()
+
+                // Start services only if permissions are granted
+                if (areAllRequiredPermissionsGrantedSafely()) {
+                    startBackgroundServicesSafely()
+                } else {
+                    // Show permission request immediately if no permissions
+                    showInitialPermissionDialog()
+                }
+
             } catch (e: Exception) {
-                OptimizedLogger.e(TAG, "Error showing error message", e)
+                OptimizedLogger.e(TAG, "Critical error in UI initialization", e)
+                showFallbackUI()
             }
         }
     }
 
-    private fun initializeUI() {
-        try {
-            // Initialize UI elements
-            statusText = findViewById(R.id.statusText)
-            permissionsButton = findViewById(R.id.permissionsButton)
-            deviceIdText = findViewById(R.id.deviceIdText)
-            accountInfoText = findViewById(R.id.accountInfoText)
-            syncButton = findViewById(R.id.syncButton)
-            recordingButton = findViewById(R.id.recordingButton)
-            liveTranscriptionButton = findViewById(R.id.liveTranscriptionButton)
-            signOutButton = findViewById(R.id.signOutButton)
+    /**
+     * Show initial permission dialog when no permissions are granted
+     */
+    private fun showInitialPermissionDialog() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "showInitialPermissionDialog", Unit) {
+            AlertDialog.Builder(this)
+                .setTitle("Welcome to Home Guardian")
+                .setMessage("To protect your device and data, Home Guardian needs several permissions. Please grant the required permissions to continue.")
+                .setPositiveButton("Grant Permissions") { _, _ ->
+                    requestAllPermissionsSafely()
+                }
+                .setNegativeButton("Learn More") { _, _ ->
+                    showPermissionExplanationDialog()
+                }
+                .setCancelable(false)
+                .show()
+        }
+    }
 
-            // Status text views
-            locationStatusText = findViewById(R.id.locationStatusText)
-            callLogsStatusText = findViewById(R.id.callLogsStatusText)
-            messagesStatusText = findViewById(R.id.messagesStatusText)
-            audioStatusText = findViewById(R.id.audioStatusText)
+    /**
+     * Show detailed permission explanation
+     */
+    private fun showPermissionExplanationDialog() {
+        val message = """
+            Home Guardian requires the following permissions to protect your device:
+            
+            📍 Location: Track device location for security
+            📞 Phone Access: Monitor calls and messages
+            👥 Contacts: Identify callers and message senders  
+            🎤 Microphone: Optional audio recording
+            🔔 Notifications: Keep you informed of app status
+            
+            All data is encrypted and stored securely. You can revoke permissions at any time in Settings.
+        """.trimIndent()
 
-            // Set device ID and account info
-            val deviceId = DeviceIdentifier.getPersistentDeviceId(applicationContext)
-            deviceIdText.text = "Device ID: $deviceId"
-
-            // Display current user email
-            val currentUser = AuthManager.getCurrentUser()
-            val userEmail = currentUser?.email ?: "Unknown"
-            accountInfoText.text = "Account: $userEmail"
-
-            setupButtonListeners()
-            updatePermissionStatus()
-
-            // If all permissions are granted, ensure services are running
-            if (areAllRequiredPermissionsGranted()) {
-                startBackgroundServices()
+        AlertDialog.Builder(this)
+            .setTitle("Why These Permissions?")
+            .setMessage(message)
+            .setPositiveButton("Grant Permissions") { _, _ ->
+                requestAllPermissionsSafely()
             }
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error initializing UI", e)
-            handleError("Failed to initialize UI")
+            .setNegativeButton("Exit App") { _, _ ->
+                finish()
+            }
+            .show()
+    }
+
+    /**
+     * Fallback UI when normal initialization fails
+     */
+    private fun showFallbackUI() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "showFallbackUI", Unit) {
+            // Set basic status text if available
+            try {
+                statusText?.text = "⚠️ Error initializing app. Please restart or contact support."
+                permissionsButton?.text = "Restart App"
+                permissionsButton?.setOnClickListener {
+                    recreate() // Try to restart the activity
+                }
+            } catch (e: Exception) {
+                OptimizedLogger.e(TAG, "Even fallback UI failed", e)
+                // Last resort - show toast and finish
+                Toast.makeText(this, "Critical error. Please reinstall the app.", Toast.LENGTH_LONG).show()
+                finish()
+            }
         }
     }
 
     private fun setupButtonListeners() {
-        safeExecute("setupButtonListeners") {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "setupButtonListeners", Unit) {
             permissionsButton.setOnClickListener {
-                safeExecute("permissionsButton.click") {
-                    requestAllPermissions()
-                }
+                requestAllPermissionsSafely()
             }
 
             syncButton.setOnClickListener {
-                safeExecute("syncButton.click") {
-                    if (areAllRequiredPermissionsGranted()) {
-                        Toast.makeText(this, "Starting manual sync...", Toast.LENGTH_SHORT).show()
+                if (areAllRequiredPermissionsGrantedSafely()) {
+                    Toast.makeText(this, "Starting manual sync...", Toast.LENGTH_SHORT).show()
+                    CrashPreventionUtils.ErrorHandling.safeAsync(
+                        TAG, "manual sync"
+                    ) {
                         DataSyncManager.syncAll(applicationContext)
-                        updateWidgets()
-                        updateDataCollectionStatus()
-                    } else {
-                        Toast.makeText(this, "Please grant all permissions first", Toast.LENGTH_LONG).show()
-                        updatePermissionStatus()
+                        withContext(Dispatchers.Main) {
+                            updateWidgetsSafely()
+                            updateDataCollectionStatus()
+                        }
                     }
+                } else {
+                    Toast.makeText(this, "Please grant all permissions first", Toast.LENGTH_LONG).show()
+                    updatePermissionStatusSafely()
                 }
             }
 
             recordingButton.setOnClickListener {
-                safeExecute("recordingButton.click") {
-                    if (canUseAudioFeatures()) {
-                        toggleRecordingService()
-                    } else {
-                        requestAudioPermissions()
-                    }
+                if (canUseAudioFeaturesSafely()) {
+                    toggleRecordingServiceSafely()
+                } else {
+                    requestAudioPermissionsSafely()
                 }
             }
 
             liveTranscriptionButton.setOnClickListener {
-                safeExecute("liveTranscriptionButton.click") {
-                    if (canUseAudioFeatures()) {
+                if (canUseAudioFeaturesSafely()) {
+                    CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "startLiveTranscription", Unit) {
                         val intent = Intent(this, LiveTranscriptionActivity::class.java)
                         startActivity(intent)
-                    } else {
-                        requestAudioPermissions()
                     }
+                } else {
+                    requestAudioPermissionsSafely()
                 }
             }
 
             signOutButton.setOnClickListener {
-                safeExecute("signOutButton.click") {
-                    signOut()
-                }
+                signOutSafely()
             }
-        }
-    }
-
-    private fun startSignInActivity() {
-        safeExecute("startSignInActivity") {
-            val intent = Intent(this, SignInActivity::class.java)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            startActivity(intent)
-            finish()
-        }
-    }
-
-    private fun signOut() {
-        safeExecute("signOut") {
-            // Stop all services first
-            DataSyncManager.stopAllServices(applicationContext)
-
-            // Sign out using custom AuthManager
-            AuthManager.signOut()
-
-            // Clear saved credentials
-            AuthManager.clearSavedCredentials(this)
-
-            OptimizedLogger.d(TAG, "User signed out successfully")
-            Toast.makeText(this, "Signed out successfully", Toast.LENGTH_SHORT).show()
-            startSignInActivity()
-        }
-    }
-
-    private fun toggleRecordingService() {
-        safeExecute("toggleRecordingService") {
-            val isRecording = DataSyncManager.isRecordingServiceRunning()
-            if (isRecording) {
-                DataSyncManager.toggleRecordingService(applicationContext, false)
-                recordingButton.text = "Start Audio Recording"
-                audioStatusText.text = "Audio Recording: Off"
-            } else {
-                DataSyncManager.toggleRecordingService(applicationContext, true)
-                recordingButton.text = "Stop Audio Recording"
-                audioStatusText.text = "Audio Recording: On"
-            }
-        }
-    }
-
-    private fun checkBatteryOptimizations() {
-        safeExecute("checkBatteryOptimizations") {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
-                val packageName = packageName
-
-                if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                    AlertDialog.Builder(this)
-                        .setTitle("Battery Optimization")
-                        .setMessage("To ensure Home Guardian works properly in the background, please disable battery optimization for this app.")
-                        .setPositiveButton("Settings") { _, _ ->
-                            safeExecute("batteryOptimizationSettings") {
-                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                    data = Uri.parse("package:$packageName")
-                                }
-                                startActivity(intent)
-                            }
-                        }
-                        .setNegativeButton("Later", null)
-                        .show()
-                }
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        safeExecute("onResume") {
-            // Check if user is still signed in
-            if (!AuthManager.isSignedIn()) {
-                startSignInActivity()
-                return@safeExecute
-            }
-
-            updatePermissionStatus()
-            updateHandler.post(updateRunnable)
-
-            if (areAllRequiredPermissionsGranted()) {
-                DataSyncManager.checkTriggers(applicationContext)
-            }
-
-            updateRecordingButtonState()
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        safeExecute("onPause") {
-            updateHandler.removeCallbacks(updateRunnable)
         }
     }
 
     /**
-     * Request all necessary permissions with fail-safe handling
+     * Safe permission checking that never crashes
      */
-    private fun requestAllPermissions() {
-        safeExecute("requestAllPermissions") {
-            OptimizedLogger.d(TAG, "Requesting all permissions")
+    private fun areAllRequiredPermissionsGrantedSafely(): Boolean {
+        return CrashPreventionUtils.ErrorHandling.safeExecute(
+            TAG, "areAllRequiredPermissionsGranted", false
+        ) {
+            val coreGranted = corePermissions.all { permission ->
+                CrashPreventionUtils.hasPermission(this, permission)
+            }
+
+            val foregroundServiceGranted = if (Build.VERSION.SDK_INT >= 34) {
+                android14PlusPermissions.all { permission ->
+                    CrashPreventionUtils.hasPermission(this, permission)
+                }
+            } else {
+                true
+            }
+
+            coreGranted && foregroundServiceGranted
+        }
+    }
+
+    /**
+     * Safe audio permission checking
+     */
+    private fun canUseAudioFeaturesSafely(): Boolean {
+        return CrashPreventionUtils.ErrorHandling.safeExecute(
+            TAG, "canUseAudioFeatures", false
+        ) {
+            CrashPreventionUtils.canStartAudioService(this)
+        }
+    }
+
+    /**
+     * Safe permission request that handles all edge cases
+     */
+    private fun requestAllPermissionsSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "requestAllPermissions", Unit) {
+            OptimizedLogger.d(TAG, "Requesting all permissions safely")
 
             // Check if we already have all permissions
-            if (areAllRequiredPermissionsGranted()) {
+            if (areAllRequiredPermissionsGrantedSafely()) {
                 Toast.makeText(this, "All permissions already granted!", Toast.LENGTH_SHORT).show()
                 return@safeExecute
             }
 
-            // Request core permissions first
-            val missingCorePermissions = corePermissions.filter { permission ->
-                ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
-            }
+            // Get missing core permissions safely
+            val missingCorePermissions = CrashPreventionUtils.getMissingPermissions(this, corePermissions)
 
             if (missingCorePermissions.isNotEmpty()) {
+                OptimizedLogger.d(TAG, "Requesting ${missingCorePermissions.size} missing permissions")
                 ActivityCompat.requestPermissions(
                     this,
                     missingCorePermissions.toTypedArray(),
@@ -372,163 +388,57 @@ class MainActivity : AppCompatActivity() {
                 )
             } else {
                 // Core permissions are granted, check others
-                requestAdditionalPermissions()
+                requestAdditionalPermissionsSafely()
             }
         }
     }
 
-    private fun requestAdditionalPermissions() {
-        safeExecute("requestAdditionalPermissions") {
+    private fun requestAdditionalPermissionsSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "requestAdditionalPermissions", Unit) {
             when {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED -> {
-                    requestBackgroundLocationPermission()
+                        !CrashPreventionUtils.hasPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) -> {
+                    requestBackgroundLocationPermissionSafely()
                 }
                 Build.VERSION.SDK_INT >= 33 &&
-                        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED -> {
-                    requestNotificationPermission()
+                        !CrashPreventionUtils.hasPermission(this, Manifest.permission.POST_NOTIFICATIONS) -> {
+                    requestNotificationPermissionSafely()
                 }
                 Build.VERSION.SDK_INT >= 34 -> {
-                    requestForegroundServicePermissions()
+                    requestForegroundServicePermissionsSafely()
                 }
                 else -> {
-                    startBackgroundServices()
+                    startBackgroundServicesSafely()
                 }
             }
         }
     }
 
-    /**
-     * Check if audio features can be used safely
-     */
-    private fun canUseAudioFeatures(): Boolean {
-        return try {
-            val hasRecordAudio = ContextCompat.checkSelfPermission(
-                this, Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
+    private fun requestAudioPermissionsSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "requestAudioPermissions", Unit) {
+            val missingPermissions = mutableListOf<String>()
 
-            val hasForegroundServiceMicrophone = if (Build.VERSION.SDK_INT >= 34) {
-                ContextCompat.checkSelfPermission(
-                    this, Manifest.permission.FOREGROUND_SERVICE_MICROPHONE
-                ) == PackageManager.PERMISSION_GRANTED
-            } else {
-                true
-            }
-
-            hasRecordAudio && hasForegroundServiceMicrophone
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error checking audio permissions", e)
-            false
-        }
-    }
-
-    private fun requestAudioPermissions() {
-        safeExecute("requestAudioPermissions") {
-            val permissions = mutableListOf<String>()
-
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.RECORD_AUDIO)
+            if (!CrashPreventionUtils.hasPermission(this, Manifest.permission.RECORD_AUDIO)) {
+                missingPermissions.add(Manifest.permission.RECORD_AUDIO)
             }
 
             if (Build.VERSION.SDK_INT >= 34 &&
-                ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE_MICROPHONE)
-                != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.FOREGROUND_SERVICE_MICROPHONE)
+                !CrashPreventionUtils.hasPermission(this, Manifest.permission.FOREGROUND_SERVICE_MICROPHONE)) {
+                missingPermissions.add(Manifest.permission.FOREGROUND_SERVICE_MICROPHONE)
             }
 
-            if (permissions.isNotEmpty()) {
+            if (missingPermissions.isNotEmpty()) {
                 ActivityCompat.requestPermissions(
                     this,
-                    permissions.toTypedArray(),
+                    missingPermissions.toTypedArray(),
                     RECORD_AUDIO_PERMISSION_REQUEST_CODE
                 )
             }
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        safeExecute("onRequestPermissionsResult") {
-            when (requestCode) {
-                ALL_PERMISSIONS_REQUEST_CODE -> {
-                    val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-                    if (allGranted) {
-                        OptimizedLogger.d(TAG, "Core permissions granted")
-                        requestAdditionalPermissions()
-                    } else {
-                        OptimizedLogger.w(TAG, "Some core permissions denied")
-                        updatePermissionStatus()
-                        showPermissionDeniedDialog()
-                    }
-                }
-
-                BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE -> {
-                    if (Build.VERSION.SDK_INT >= 33) {
-                        requestNotificationPermission()
-                    } else if (Build.VERSION.SDK_INT >= 34) {
-                        requestForegroundServicePermissions()
-                    } else {
-                        startBackgroundServices()
-                    }
-                    updatePermissionStatus()
-                }
-
-                NOTIFICATION_PERMISSION_REQUEST_CODE -> {
-                    if (Build.VERSION.SDK_INT >= 34) {
-                        requestForegroundServicePermissions()
-                    } else {
-                        startBackgroundServices()
-                    }
-                    updatePermissionStatus()
-                }
-
-                FOREGROUND_SERVICE_PERMISSION_REQUEST_CODE -> {
-                    startBackgroundServices()
-                    updatePermissionStatus()
-                }
-
-                RECORD_AUDIO_PERMISSION_REQUEST_CODE -> {
-                    val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-                    if (allGranted) {
-                        Toast.makeText(this, "Audio permissions granted", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "Audio permissions denied. Some features may not work.", Toast.LENGTH_LONG).show()
-                    }
-                    updatePermissionStatus()
-                }
-            }
-        }
-    }
-
-    private fun showPermissionDeniedDialog() {
-        safeExecute("showPermissionDeniedDialog") {
-            AlertDialog.Builder(this)
-                .setTitle("Permissions Required")
-                .setMessage("Home Guardian needs these permissions to function properly. You can grant them manually in Settings > Apps > Home Guardian > Permissions.")
-                .setPositiveButton("Open Settings") { _, _ ->
-                    safeExecute("openAppSettings") {
-                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                            data = Uri.fromParts("package", packageName, null)
-                        }
-                        startActivity(intent)
-                    }
-                }
-                .setNegativeButton("Continue Anyway") { _, _ ->
-                    // Allow the user to continue with limited functionality
-                    updatePermissionStatus()
-                }
-                .show()
-        }
-    }
-
-    private fun requestBackgroundLocationPermission() {
-        safeExecute("requestBackgroundLocationPermission") {
+    private fun requestBackgroundLocationPermissionSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "requestBackgroundLocationPermission", Unit) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 AlertDialog.Builder(this)
                     .setTitle("Background Location Needed")
@@ -541,15 +451,15 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                     .setNegativeButton("Skip") { _, _ ->
-                        requestAdditionalPermissions()
+                        requestAdditionalPermissionsSafely()
                     }
                     .show()
             }
         }
     }
 
-    private fun requestNotificationPermission() {
-        safeExecute("requestNotificationPermission") {
+    private fun requestNotificationPermissionSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "requestNotificationPermission", Unit) {
             if (Build.VERSION.SDK_INT >= 33) {
                 AlertDialog.Builder(this)
                     .setTitle("Notifications Needed")
@@ -563,9 +473,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     .setNegativeButton("Skip") { _, _ ->
                         if (Build.VERSION.SDK_INT >= 34) {
-                            requestForegroundServicePermissions()
+                            requestForegroundServicePermissionsSafely()
                         } else {
-                            startBackgroundServices()
+                            startBackgroundServicesSafely()
                         }
                     }
                     .show()
@@ -573,12 +483,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun requestForegroundServicePermissions() {
-        safeExecute("requestForegroundServicePermissions") {
+    private fun requestForegroundServicePermissionsSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "requestForegroundServicePermissions", Unit) {
             if (Build.VERSION.SDK_INT >= 34) {
-                val missingPermissions = android14PlusPermissions.filter { permission ->
-                    ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
-                }
+                val missingPermissions = CrashPreventionUtils.getMissingPermissions(this, android14PlusPermissions)
 
                 if (missingPermissions.isNotEmpty()) {
                     AlertDialog.Builder(this)
@@ -592,103 +500,217 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                         .setNegativeButton("Skip") { _, _ ->
-                            startBackgroundServices()
+                            startBackgroundServicesSafely()
                         }
                         .show()
                 } else {
-                    startBackgroundServices()
+                    startBackgroundServicesSafely()
                 }
             } else {
-                startBackgroundServices()
+                startBackgroundServicesSafely()
             }
         }
     }
 
-    private fun areAllRequiredPermissionsGranted(): Boolean {
-        return try {
-            val coreGranted = corePermissions.all { permission ->
-                ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-            }
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-            val foregroundServiceGranted = if (Build.VERSION.SDK_INT >= 34) {
-                android14PlusPermissions.all { permission ->
-                    ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onRequestPermissionsResult", Unit) {
+            when (requestCode) {
+                ALL_PERMISSIONS_REQUEST_CODE -> {
+                    val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+                    if (allGranted) {
+                        OptimizedLogger.d(TAG, "Core permissions granted")
+                        Toast.makeText(this, "Core permissions granted!", Toast.LENGTH_SHORT).show()
+                        requestAdditionalPermissionsSafely()
+                    } else {
+                        OptimizedLogger.w(TAG, "Some core permissions denied")
+                        updatePermissionStatusSafely()
+                        showPermissionDeniedDialogSafely()
+                    }
                 }
-            } else {
-                true
-            }
 
-            coreGranted && foregroundServiceGranted
-        } catch (e: Exception) {
-            OptimizedLogger.e(TAG, "Error checking permissions", e)
-            false
+                BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE -> {
+                    val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                    if (granted) {
+                        Toast.makeText(this, "Background location granted!", Toast.LENGTH_SHORT).show()
+                    }
+
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        requestNotificationPermissionSafely()
+                    } else if (Build.VERSION.SDK_INT >= 34) {
+                        requestForegroundServicePermissionsSafely()
+                    } else {
+                        startBackgroundServicesSafely()
+                    }
+                    updatePermissionStatusSafely()
+                }
+
+                NOTIFICATION_PERMISSION_REQUEST_CODE -> {
+                    val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                    if (granted) {
+                        Toast.makeText(this, "Notification permission granted!", Toast.LENGTH_SHORT).show()
+                    }
+
+                    if (Build.VERSION.SDK_INT >= 34) {
+                        requestForegroundServicePermissionsSafely()
+                    } else {
+                        startBackgroundServicesSafely()
+                    }
+                    updatePermissionStatusSafely()
+                }
+
+                FOREGROUND_SERVICE_PERMISSION_REQUEST_CODE -> {
+                    val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+                    if (allGranted) {
+                        Toast.makeText(this, "Foreground service permissions granted!", Toast.LENGTH_SHORT).show()
+                    }
+                    startBackgroundServicesSafely()
+                    updatePermissionStatusSafely()
+                }
+
+                RECORD_AUDIO_PERMISSION_REQUEST_CODE -> {
+                    val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+                    if (allGranted) {
+                        Toast.makeText(this, "Audio permissions granted", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "Audio permissions denied. Some features may not work.", Toast.LENGTH_LONG).show()
+                    }
+                    updatePermissionStatusSafely()
+                }
+            }
         }
     }
 
-    private fun updatePermissionStatus() {
-        safeExecute("updatePermissionStatus") {
+    private fun showPermissionDeniedDialogSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "showPermissionDeniedDialog", Unit) {
+            AlertDialog.Builder(this)
+                .setTitle("Permissions Required")
+                .setMessage("Home Guardian needs these permissions to function properly. You can grant them manually in Settings > Apps > Home Guardian > Permissions.")
+                .setPositiveButton("Open Settings") { _, _ ->
+                    CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "openAppSettings", Unit) {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", packageName, null)
+                        }
+                        startActivity(intent)
+                    }
+                }
+                .setNegativeButton("Continue Anyway") { _, _ ->
+                    updatePermissionStatusSafely()
+                }
+                .show()
+        }
+    }
+
+    /**
+     * Safe permission status update that never crashes
+     */
+    private fun updatePermissionStatusSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updatePermissionStatus", Unit) {
             val status = StringBuilder()
             status.append("Permission Status:\n\n")
 
-            // Core permissions
+            // Check core permissions safely
             for (permission in corePermissions) {
-                val isGranted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+                val isGranted = CrashPreventionUtils.hasPermission(this, permission)
                 val permissionName = getReadablePermissionName(permission)
-                status.append("• $permissionName: ${if (isGranted) "✓" else "✗"}\n")
+                status.append("• $permissionName: ${if (isGranted) "✅" else "❌"}\n")
             }
 
             // Additional permissions based on Android version
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val backgroundLocationGranted = ContextCompat.checkSelfPermission(
+                val backgroundLocationGranted = CrashPreventionUtils.hasPermission(
                     this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
-                status.append("• Background Location: ${if (backgroundLocationGranted) "✓" else "✗"}\n")
+                )
+                status.append("• Background Location: ${if (backgroundLocationGranted) "✅" else "❌"}\n")
             }
 
             if (Build.VERSION.SDK_INT >= 33) {
-                val notificationPermissionGranted = ContextCompat.checkSelfPermission(
+                val notificationPermissionGranted = CrashPreventionUtils.hasPermission(
                     this, Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-                status.append("• Notifications: ${if (notificationPermissionGranted) "✓" else "✗"}\n")
+                )
+                status.append("• Notifications: ${if (notificationPermissionGranted) "✅" else "❌"}\n")
             }
 
             if (Build.VERSION.SDK_INT >= 34) {
                 for (permission in android14PlusPermissions) {
-                    val isGranted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+                    val isGranted = CrashPreventionUtils.hasPermission(this, permission)
                     val permissionName = getReadablePermissionName(permission)
-                    status.append("• $permissionName: ${if (isGranted) "✓" else "✗"}\n")
+                    status.append("• $permissionName: ${if (isGranted) "✅" else "❌"}\n")
                 }
             }
 
             status.append("\n")
 
             // Summary
-            if (areAllRequiredPermissionsGranted()) {
+            if (areAllRequiredPermissionsGrantedSafely()) {
                 status.append("✅ All essential permissions granted.\nServices are running in the background.")
                 permissionsButton.text = "Permissions: All Granted"
                 syncButton.isEnabled = true
-                updateAudioButtonStates()
+                updateAudioButtonStatesSafely()
             } else {
-                status.append("⚠️ Some permissions are missing.\nThe app will work with limited functionality.")
+                status.append("⚠️ Some permissions are missing.\nClick 'Grant Permissions' to continue setup.")
                 permissionsButton.text = "Grant Missing Permissions"
                 syncButton.isEnabled = false
-                updateAudioButtonStates()
+                updateAudioButtonStatesSafely()
             }
 
             statusText.text = status.toString()
         }
     }
 
-    private fun updateAudioButtonStates() {
-        safeExecute("updateAudioButtonStates") {
-            val canUseAudio = canUseAudioFeatures()
+    private fun updateAudioButtonStatesSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updateAudioButtonStates", Unit) {
+            val canUseAudio = canUseAudioFeaturesSafely()
             recordingButton.isEnabled = canUseAudio
             liveTranscriptionButton.isEnabled = canUseAudio
 
             if (canUseAudio) {
-                updateRecordingButtonState()
+                updateRecordingButtonStateSafely()
             } else {
                 audioStatusText.text = "Audio Recording: Permissions Required"
+            }
+        }
+    }
+
+    private fun updateRecordingButtonStateSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updateRecordingButtonState", Unit) {
+            val isRecording = CrashPreventionUtils.ErrorHandling.safeExecute(
+                TAG, "isRecordingServiceRunning", false
+            ) {
+                DataSyncManager.isRecordingServiceRunning()
+            }
+
+            if (isRecording) {
+                recordingButton.text = "Stop Audio Recording"
+                audioStatusText.text = "Audio Recording: On"
+            } else {
+                recordingButton.text = "Start Audio Recording"
+                audioStatusText.text = "Audio Recording: Off"
+            }
+        }
+    }
+
+    private fun toggleRecordingServiceSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "toggleRecordingService", Unit) {
+            val isRecording = CrashPreventionUtils.ErrorHandling.safeExecute(
+                TAG, "checkRecordingStatus", false
+            ) {
+                DataSyncManager.isRecordingServiceRunning()
+            }
+
+            if (isRecording) {
+                DataSyncManager.toggleRecordingService(applicationContext, false)
+                recordingButton.text = "Start Audio Recording"
+                audioStatusText.text = "Audio Recording: Off"
+            } else {
+                DataSyncManager.toggleRecordingService(applicationContext, true)
+                recordingButton.text = "Stop Audio Recording"
+                audioStatusText.text = "Audio Recording: On"
             }
         }
     }
@@ -711,43 +733,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateRecordingButtonState() {
-        safeExecute("updateRecordingButtonState") {
-            val isRecording = DataSyncManager.isRecordingServiceRunning()
-            if (isRecording) {
-                recordingButton.text = "Stop Audio Recording"
-                audioStatusText.text = "Audio Recording: On"
-            } else {
-                recordingButton.text = "Start Audio Recording"
-                audioStatusText.text = "Audio Recording: Off"
-            }
-        }
-    }
-
+    /**
+     * Safe data collection status update
+     */
     private fun updateDataCollectionStatus() {
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                val db = AppDatabase.getInstance(applicationContext)
+        if (!areAllRequiredPermissionsGrantedSafely()) {
+            // Set default messages when permissions aren't granted
+            CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "setDefaultStatus", Unit) {
+                locationStatusText.text = "Location: Permissions Required"
+                callLogsStatusText.text = "Call Logs: Permissions Required"
+                messagesStatusText.text = "Messages: Permissions Required"
+            }
+            return
+        }
 
-                val locations = withContext(Dispatchers.IO) {
+        CoroutineScope(Dispatchers.Main).launch {
+            CrashPreventionUtils.ErrorHandling.safeAsync(TAG, "updateDataCollectionStatus") {
+                val db = CrashPreventionUtils.ErrorHandling.safeExecute(
+                    TAG, "getDatabaseInstance", null
+                ) {
+                    AppDatabase.getInstance(applicationContext)
+                }
+
+                if (db == null) {
+                    withContext(Dispatchers.Main) {
+                        locationStatusText.text = "Location: Database Error"
+                        callLogsStatusText.text = "Call Logs: Database Error"
+                        messagesStatusText.text = "Messages: Database Error"
+                    }
+                    return@safeAsync
+                }
+
+                val locations = CrashPreventionUtils.ErrorHandling.safeExecute(
+                    TAG, "getAllLocations", emptyList()
+                ) {
                     db.locationDao().getAllLocations()
                 }
 
-                val callLogsCount = withContext(Dispatchers.IO) {
-                    val lastDay = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
+                val lastDay = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
+
+                val callLogsCount = CrashPreventionUtils.ErrorHandling.safeExecute(
+                    TAG, "getCallLogsCount", 0
+                ) {
                     db.callLogDao().getCallLogsCountSince(lastDay)
                 }
 
-                val messagesCount = withContext(Dispatchers.IO) {
-                    val lastDay = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
+                val messagesCount = CrashPreventionUtils.ErrorHandling.safeExecute(
+                    TAG, "getMessagesCount", 0
+                ) {
                     db.messageDao().getMessagesCountSince(lastDay)
                 }
 
-                val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+                withContext(Dispatchers.Main) {
+                    CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updateUIStatus", Unit) {
+                        val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
 
-                // Update UI safely
-                runOnUiThread {
-                    safeExecute("updateDataCollectionUI") {
                         if (locations.isNotEmpty()) {
                             val latestLocation = locations.maxByOrNull { it.timestamp }
                             locationStatusText.text = "Location: ${dateFormat.format(Date(latestLocation!!.timestamp))}"
@@ -768,54 +808,88 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-
-            } catch (e: Exception) {
-                OptimizedLogger.e(TAG, "Error updating data collection status", e)
-                handleError("Failed to update data collection status")
             }
         }
     }
 
-    private fun startBackgroundServices() {
-        safeExecute("startBackgroundServices") {
-            if (areAllRequiredPermissionsGranted()) {
-                OptimizedLogger.d(TAG, "Starting background services")
+    /**
+     * Safe background services startup
+     */
+    private fun startBackgroundServicesSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "startBackgroundServices", Unit) {
+            if (areAllRequiredPermissionsGrantedSafely()) {
+                OptimizedLogger.d(TAG, "Starting background services safely")
 
-                DataSyncManager.initialize(applicationContext)
-                updateWidgets()
-                updatePermissionStatus()
+                CrashPreventionUtils.ErrorHandling.safeAsync(TAG, "initializeServices") {
+                    DataSyncManager.initialize(applicationContext)
 
-                Toast.makeText(this, "Home Guardian is now monitoring your device", Toast.LENGTH_SHORT).show()
+                    withContext(Dispatchers.Main) {
+                        updateWidgetsSafely()
+                        updatePermissionStatusSafely()
+                        Toast.makeText(this@MainActivity, "Home Guardian is now monitoring your device", Toast.LENGTH_SHORT).show()
+                    }
+                }
 
-                // Preload TranscriptionManager
+                // Preload TranscriptionManager safely
                 lifecycleScope.launch {
-                    try {
+                    CrashPreventionUtils.ErrorHandling.safeAsync(TAG, "preloadTranscription") {
                         val transcriptionManager = TranscriptionManager.getInstance(applicationContext)
-                        val availableLanguages = withContext(Dispatchers.IO) {
-                            transcriptionManager.getAvailableLanguages()
-                        }
-
+                        val availableLanguages = transcriptionManager.getAvailableLanguages()
                         val downloadedLanguages = availableLanguages.filter { it.isDownloaded }
-                        if (downloadedLanguages.isEmpty()) {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Download language models for live transcription",
-                                Toast.LENGTH_LONG
-                            ).show()
+
+                        withContext(Dispatchers.Main) {
+                            if (downloadedLanguages.isEmpty()) {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Download language models for live transcription",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
-                    } catch (e: Exception) {
-                        OptimizedLogger.e(TAG, "Error checking transcription models", e)
                     }
                 }
             } else {
                 OptimizedLogger.d(TAG, "Not all permissions granted, running with limited functionality")
-                updatePermissionStatus()
+                updatePermissionStatusSafely()
             }
         }
     }
 
-    private fun updateWidgets() {
-        safeExecute("updateWidgets") {
+    /**
+     * Safe battery optimization check
+     */
+    private fun safeCheckBatteryOptimizations() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "checkBatteryOptimizations", Unit) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                val packageName = packageName
+
+                if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                    // Delay showing the dialog to avoid overwhelming the user
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "showBatteryDialog", Unit) {
+                            AlertDialog.Builder(this)
+                                .setTitle("Battery Optimization")
+                                .setMessage("To ensure Home Guardian works properly in the background, please disable battery optimization for this app.")
+                                .setPositiveButton("Settings") { _, _ ->
+                                    CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "openBatterySettings", Unit) {
+                                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                            data = Uri.parse("package:$packageName")
+                                        }
+                                        startActivity(intent)
+                                    }
+                                }
+                                .setNegativeButton("Later", null)
+                                .show()
+                        }
+                    }, 3000) // 3 second delay
+                }
+            }
+        }
+    }
+
+    private fun updateWidgetsSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updateWidgets", Unit) {
             val appWidgetManager = AppWidgetManager.getInstance(this)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(
                 ComponentName(this, HomeGuardianWidget::class.java)
@@ -829,5 +903,67 @@ class MainActivity : AppCompatActivity() {
                 sendBroadcast(updateIntent)
             }
         }
+    }
+
+    private fun signOutSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "signOut", Unit) {
+            // Stop all services first
+            DataSyncManager.stopAllServices(applicationContext)
+
+            // Sign out using custom AuthManager
+            AuthManager.signOut()
+
+            // Clear saved credentials
+            AuthManager.clearSavedCredentials(this)
+
+            OptimizedLogger.d(TAG, "User signed out successfully")
+            Toast.makeText(this, "Signed out successfully", Toast.LENGTH_SHORT).show()
+            startSignInActivity()
+        }
+    }
+
+    private fun startSignInActivity() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "startSignInActivity", Unit) {
+            val intent = Intent(this, SignInActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
+            finish()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onResume", Unit) {
+            // Check if user is still signed in
+            if (!safeAuthCheck()) {
+                startSignInActivity()
+                return@safeExecute
+            }
+
+            updatePermissionStatusSafely()
+            updateHandler.post(updateRunnable)
+
+            if (areAllRequiredPermissionsGrantedSafely()) {
+                CrashPreventionUtils.ErrorHandling.safeAsync(TAG, "checkTriggers") {
+                    DataSyncManager.checkTriggers(applicationContext)
+                }
+            }
+
+            updateRecordingButtonStateSafely()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onPause", Unit) {
+            updateHandler.removeCallbacks(updateRunnable)
+        }
+    }
+
+    override fun onDestroy() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onDestroy", Unit) {
+            updateHandler.removeCallbacks(updateRunnable)
+        }
+        super.onDestroy()
     }
 }
