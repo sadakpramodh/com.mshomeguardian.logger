@@ -430,6 +430,35 @@ object FirebaseServiceHelper {
     }
 
     /**
+     * Upload network usage statistics
+     */
+    suspend fun uploadNetworkUsage(
+        userEmail: String,
+        deviceId: String,
+        usageData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+
+                val packageName = usageData["packageName"] as? String
+                    ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "network_usage")
+
+                firestoreInstance.collection(collectionPath)
+                    .document(packageName)
+                    .set(usageData, SetOptions.merge())
+                    .await()
+
+                Log.d(TAG, "Network usage uploaded successfully for $userEmail")
+                true
+            },
+            operationName = "Upload network usage",
+            defaultValue = false
+        )
+    }
+
+    /**
      * Upload battery status information
      */
     suspend fun uploadBatteryStatus(

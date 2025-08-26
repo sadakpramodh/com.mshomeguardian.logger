@@ -14,9 +14,10 @@ import com.mshomeguardian.logger.utils.OptimizedLogger
         CallLogEntity::class,
         MessageEntity::class,
         DeviceInfoEntity::class,
-        AudioRecordingEntity::class
+        AudioRecordingEntity::class,
+        NetworkUsageEntity::class
     ],
-    version = 3, // Incremented for optimization
+    version = 4, // Incremented for optimization
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,6 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun deviceInfoDao(): DeviceInfoDao
     abstract fun audioRecordingDao(): AudioRecordingDao
+    abstract fun networkUsageDao(): NetworkUsageDao
 
     companion object {
         private const val TAG = "AppDatabase"
@@ -48,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "optimized_logger_database"
             )
-                .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // Better performance
                 .enableMultiInstanceInvalidation() // For multiple processes
                 .fallbackToDestructiveMigration() // Only for development
@@ -81,6 +83,30 @@ abstract class AppDatabase : RoomDatabase() {
                     OptimizedLogger.d(TAG, "Database migration 2->3 completed with performance indices")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Error during database migration", e)
+                }
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                try {
+                    database.execSQL(
+                        "CREATE TABLE IF NOT EXISTS network_usage (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "packageName TEXT NOT NULL, " +
+                            "rxBytes INTEGER NOT NULL, " +
+                            "txBytes INTEGER NOT NULL, " +
+                            "timestamp INTEGER NOT NULL, " +
+                            "deviceId TEXT NOT NULL, " +
+                            "uploadedToCloud INTEGER NOT NULL DEFAULT 0, " +
+                            "uploadTimestamp INTEGER)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_network_usage_uploaded ON network_usage(uploadedToCloud)"
+                    )
+                    OptimizedLogger.d(TAG, "Database migration 3->4 completed")
+                } catch (e: Exception) {
+                    OptimizedLogger.e(TAG, "Error during database migration 3->4", e)
                 }
             }
         }
