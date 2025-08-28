@@ -1,4 +1,3 @@
-// 1. UPDATED AppDatabase.kt - Complete replacement
 package com.mshomeguardian.logger.data
 
 import android.content.Context
@@ -111,7 +110,8 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_call_logs_timestamp_uploaded ON call_logs(timestamp, uploadedToCloud)",
                     "CREATE INDEX IF NOT EXISTS index_messages_timestamp_uploaded ON message_logs(timestamp, uploadedToCloud)",
                     "CREATE INDEX IF NOT EXISTS index_audio_uploaded_status ON audio_recordings(uploadedToCloud, transcriptionStatus)",
-                    "CREATE INDEX IF NOT EXISTS index_network_usage_uploaded ON network_usage(uploadedToCloud)"
+                    "CREATE INDEX IF NOT EXISTS index_network_usage_uploaded ON network_usage(uploadedToCloud)",
+                    "CREATE INDEX IF NOT EXISTS index_location_timestamp ON location_table(timestamp)"
                 )
 
                 indices.forEach { sql ->
@@ -177,6 +177,7 @@ abstract class AppDatabase : RoomDatabase() {
                         )
                     """)
                     database.execSQL("CREATE INDEX IF NOT EXISTS index_network_usage_uploaded ON network_usage(uploadedToCloud)")
+                    createOptimizedIndices(database)
                     OptimizedLogger.d(TAG, "Migration 3->4 completed")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Migration 3->4 failed", e)
@@ -189,6 +190,7 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 try {
                     recreateCallLogsTable(database)
+                    createOptimizedIndices(database)
                     OptimizedLogger.d(TAG, "Migration 4->5 completed")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Migration 4->5 failed", e)
@@ -201,6 +203,7 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 try {
                     recreateCallLogsTable(database)
+                    createOptimizedIndices(database)
                     OptimizedLogger.d(TAG, "Migration 5->6 completed")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Migration 5->6 failed", e)
@@ -213,6 +216,7 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 try {
                     recreateCallLogsTable(database)
+                    createOptimizedIndices(database)
                     OptimizedLogger.d(TAG, "Migration 6->7 completed")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Migration 6->7 failed", e)
@@ -225,6 +229,7 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 try {
                     recreateCallLogsTable(database)
+                    createOptimizedIndices(database)
                     OptimizedLogger.d(TAG, "Migration 7->8 completed")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Migration 7->8 failed", e)
