@@ -12,7 +12,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index("messageId", unique = true),
         Index("phoneNumber"),
-        Index("timestamp")
+        Index("timestamp"),
+        Index(value = ["timestamp", "uploadedToCloud"], name = "index_messages_timestamp_uploaded")
     ]
 )
 data class MessageEntity(
