@@ -17,7 +17,7 @@ import com.mshomeguardian.logger.utils.OptimizedLogger
         AudioRecordingEntity::class,
         NetworkUsageEntity::class
     ],
-    version = 6, // Incremented for call log schema changes
+    version = 7, // Incremented for call log schema changes
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "optimized_logger_database"
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // Better performance
                 .enableMultiInstanceInvalidation() // For multiple processes
                 .addCallback(object : RoomDatabase.Callback() {
@@ -124,6 +124,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                rebuildCallLogsTable(database)
+                OptimizedLogger.d(TAG, "Database migration 6->7 completed with call_logs rebuild")
+            }
+        }
+
         private fun rebuildCallLogsTable(database: SupportSQLiteDatabase) {
             database.execSQL(
                 """
@@ -139,8 +146,8 @@ abstract class AppDatabase : RoomDatabase() {
                     contactPhotoUri TEXT,
                     isRead INTEGER NOT NULL,
                     isNew INTEGER NOT NULL,
-                    deletedLocally INTEGER NOT NULL DEFAULT 0,
-                    uploadedToCloud INTEGER NOT NULL DEFAULT 0,
+                    deletedLocally INTEGER NOT NULL,
+                    uploadedToCloud INTEGER NOT NULL,
                     uploadTimestamp INTEGER,
                     presentationType INTEGER,
                     callScreeningAppName TEXT,
