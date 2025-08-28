@@ -122,9 +122,8 @@ object FirebaseServiceHelper {
                 )
 
                 val userDocPath = getUserDocumentPath(userEmail)
-                firestoreInstance.document(userDocPath)
-                    .set(userData, SetOptions.merge())
-                    .await()
+                val userDocRef = firestoreInstance.document(userDocPath)
+                userDocRef.set(userData, SetOptions.merge()).await()
 
                 // Initialize device document
                 val deviceData = mapOf(
@@ -135,11 +134,13 @@ object FirebaseServiceHelper {
                 )
 
                 val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
-                firestoreInstance.document(deviceDocPath)
-                    .set(deviceData, SetOptions.merge())
-                    .await()
+                val deviceDocRef = firestoreInstance.document(deviceDocPath)
+                deviceDocRef.set(deviceData, SetOptions.merge()).await()
 
-                Log.d(TAG, "User account initialized for $userEmail with device $deviceId")
+                Log.d(
+                    TAG,
+                    "User account initialized for $userEmail at ${userDocRef.path} with device ${deviceDocRef.path}"
+                )
                 true
             },
             operationName = "Initialize user account",
@@ -162,12 +163,14 @@ object FirebaseServiceHelper {
                 val timestamp = locationData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "locations")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                    .set(locationData, SetOptions.merge())
-                    .await()
+                docRef.set(locationData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Location uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Location uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload location",
@@ -190,12 +193,14 @@ object FirebaseServiceHelper {
                 val callId = callLogData["callId"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "call_logs")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(callId)
-                    .set(callLogData, SetOptions.merge())
-                    .await()
+                docRef.set(callLogData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Call log uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Call log uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload call log",
@@ -219,12 +224,14 @@ object FirebaseServiceHelper {
                     messageData["messageId"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "messages")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(messageId)
-                    .set(messageData, SetOptions.merge())
-                    .await()
+                docRef.set(messageData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Message uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Message uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload message",
@@ -248,12 +255,14 @@ object FirebaseServiceHelper {
                     contactData["contactId"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "contacts")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(contactId)
-                    .set(contactData, SetOptions.merge())
-                    .await()
+                docRef.set(contactData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Contact uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Contact uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload contact",
@@ -275,11 +284,13 @@ object FirebaseServiceHelper {
 
                 val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
 
-                firestoreInstance.document(deviceDocPath)
-                    .set(deviceData, SetOptions.merge())
-                    .await()
+                val docRef = firestoreInstance.document(deviceDocPath)
+                docRef.set(deviceData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Device info uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Device info uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload device info",
@@ -303,12 +314,14 @@ object FirebaseServiceHelper {
                     recordingData["recordingId"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "audio_recordings")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(recordingId)
-                    .set(recordingData, SetOptions.merge())
-                    .await()
+                docRef.set(recordingData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Audio recording metadata uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Audio recording metadata uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload audio recording",
@@ -332,12 +345,14 @@ object FirebaseServiceHelper {
                 val collectionPath = getCollectionPath(userEmail, deviceId, "weather")
                 Log.d(TAG, "Using weather collection path: $collectionPath")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                    .set(weatherData, SetOptions.merge())
-                    .await()
+                docRef.set(weatherData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Weather data uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Weather data uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload weather",
@@ -360,12 +375,14 @@ object FirebaseServiceHelper {
 
                 val collectionPath = getCollectionPath(userEmail, deviceId, "phone_state")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(id)
-                    .set(phoneStateData, SetOptions.merge())
-                    .await()
+                docRef.set(phoneStateData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Phone state uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Phone state uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload phone state",
@@ -388,12 +405,14 @@ object FirebaseServiceHelper {
                 val packageName = appData["packageName"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "installed_apps")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(packageName)
-                    .set(appData, SetOptions.merge())
-                    .await()
+                docRef.set(appData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Installed app uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Installed app uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload installed app",
@@ -416,12 +435,14 @@ object FirebaseServiceHelper {
                 val packageName = usageData["packageName"] as? String ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "app_usage")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(packageName)
-                    .set(usageData, SetOptions.merge())
-                    .await()
+                docRef.set(usageData, SetOptions.merge()).await()
 
-                Log.d(TAG, "App usage uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "App usage uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload app usage",
@@ -445,12 +466,14 @@ object FirebaseServiceHelper {
                     ?: return@safeFirestoreOperation false
                 val collectionPath = getCollectionPath(userEmail, deviceId, "network_usage")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(packageName)
-                    .set(usageData, SetOptions.merge())
-                    .await()
+                docRef.set(usageData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Network usage uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Network usage uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload network usage",
@@ -473,12 +496,14 @@ object FirebaseServiceHelper {
                 val timestamp = batteryData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "battery_status")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                    .set(batteryData, SetOptions.merge())
-                    .await()
+                docRef.set(batteryData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Battery status uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Battery status uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload battery status",
@@ -501,12 +526,14 @@ object FirebaseServiceHelper {
                 val timestamp = metricsData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "system_metrics")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                    .set(metricsData, SetOptions.merge())
-                    .await()
+                docRef.set(metricsData, SetOptions.merge()).await()
 
-                Log.d(TAG, "System metrics uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "System metrics uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload system metrics",
@@ -529,12 +556,14 @@ object FirebaseServiceHelper {
                 val timestamp = sensorData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "sensor_data")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                    .set(sensorData, SetOptions.merge())
-                    .await()
+                docRef.set(sensorData, SetOptions.merge()).await()
 
-                Log.d(TAG, "Sensor data uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "Sensor data uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload sensor data",
@@ -557,12 +586,14 @@ object FirebaseServiceHelper {
                 val timestamp = eventData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "system_events")
 
-                firestoreInstance.collection(collectionPath)
+                val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                    .set(eventData, SetOptions.merge())
-                    .await()
+                docRef.set(eventData, SetOptions.merge()).await()
 
-                Log.d(TAG, "System event uploaded successfully for $userEmail")
+                Log.d(
+                    TAG,
+                    "System event uploaded successfully for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Upload system event",
@@ -585,10 +616,13 @@ object FirebaseServiceHelper {
                     "isActive" to true
                 )
 
-                firestoreInstance.document(deviceDocPath)
-                    .set(updateData, SetOptions.merge())
-                    .await()
+                val docRef = firestoreInstance.document(deviceDocPath)
+                docRef.set(updateData, SetOptions.merge()).await()
 
+                Log.d(
+                    TAG,
+                    "Device last active updated for $userEmail at ${docRef.path}"
+                )
                 true
             },
             operationName = "Update device last active",
