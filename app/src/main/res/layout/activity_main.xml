@@ -29,14 +29,6 @@
             android:textColor="#1976D2"
             android:layout_marginBottom="16dp" />
 
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Checking permissions..."
-            android:textSize="16sp"
-            android:layout_marginBottom="24dp" />
-
         <Button
             android:id="@+id/permissionsButton"
             android:layout_width="match_parent"
@@ -74,66 +66,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/sign_out"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Data Collection Status Section -->
-        <TextView
-            android:id="@+id/dataStatusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Data Collection Status:"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#F5F5F5"
-            android:padding="12dp"
-            android:layout_marginBottom="24dp">
-
-            <TextView
-                android:id="@+id/locationStatusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Location: Never"
-                android:layout_marginBottom="4dp" />
-
-            <TextView
-                android:id="@+id/callLogsStatusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Call Logs: Never"
-                android:layout_marginBottom="4dp" />
-
-            <TextView
-                android:id="@+id/messagesStatusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Messages: Never"
-                android:layout_marginBottom="4dp" />
-
-            <TextView
-                android:id="@+id/audioStatusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Audio Recording: Off" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#CCCCCC"
-            android:layout_marginBottom="16dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Home Guardian is running in the background. It will collect location, call logs, and messages every 15 minutes and securely store them."
-            android:textSize="14sp"
             android:layout_marginBottom="16dp" />
 
         <TextView

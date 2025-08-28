@@ -12,7 +12,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -20,27 +19,20 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.mshomeguardian.logger.R
-import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.LocationMonitoringService
 import com.mshomeguardian.logger.utils.DataSyncManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.widget.HomeGuardianWidget
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.appwidget.AppWidgetManager
 import androidx.lifecycle.lifecycleScope
 import com.mshomeguardian.logger.transcription.TranscriptionManager
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 import com.mshomeguardian.logger.utils.OptimizedLogger
 import com.mshomeguardian.logger.utils.CrashPreventionUtils
-import kotlinx.coroutines.delay
 
 /**
  * Crash-Safe MainActivity with comprehensive permission handling
@@ -55,11 +47,7 @@ class MainActivity : AppCompatActivity() {
     private val FOREGROUND_SERVICE_PERMISSION_REQUEST_CODE = 107
     private val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 106
 
-    // Update interval for status information (10 seconds)
-    private val STATUS_UPDATE_INTERVAL = 10000L
-
     // UI elements
-    private lateinit var statusText: TextView
     private lateinit var permissionsButton: Button
     private lateinit var deviceIdText: TextView
     private lateinit var accountInfoText: TextView
@@ -67,25 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var recordingButton: Button
     private lateinit var liveTranscriptionButton: Button
     private lateinit var signOutButton: Button
-
-    // Status text views
-    private lateinit var locationStatusText: TextView
-    private lateinit var callLogsStatusText: TextView
-    private lateinit var messagesStatusText: TextView
-    private lateinit var audioStatusText: TextView
-
-    // Handler for periodic updates
-    private val updateHandler = Handler(Looper.getMainLooper())
-    private val updateRunnable = object : Runnable {
-        override fun run() {
-            CrashPreventionUtils.ErrorHandling.safeExecute(
-                TAG, "updateDataCollectionStatus", Unit
-            ) {
-                updateDataCollectionStatus()
-            }
-            updateHandler.postDelayed(this, STATUS_UPDATE_INTERVAL)
-        }
-    }
+    
 
     // Permission arrays with crash-safe access
     private val corePermissions = arrayOf(
@@ -163,7 +133,6 @@ class MainActivity : AppCompatActivity() {
         CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "initializeUI", Unit) {
             try {
                 // Initialize UI elements with null checks
-                statusText = findViewById(R.id.statusText)
                 permissionsButton = findViewById(R.id.permissionsButton)
                 deviceIdText = findViewById(R.id.deviceIdText)
                 accountInfoText = findViewById(R.id.accountInfoText)
@@ -171,12 +140,6 @@ class MainActivity : AppCompatActivity() {
                 recordingButton = findViewById(R.id.recordingButton)
                 liveTranscriptionButton = findViewById(R.id.liveTranscriptionButton)
                 signOutButton = findViewById(R.id.signOutButton)
-
-                // Status text views with fallback
-                locationStatusText = findViewById(R.id.locationStatusText)
-                callLogsStatusText = findViewById(R.id.callLogsStatusText)
-                messagesStatusText = findViewById(R.id.messagesStatusText)
-                audioStatusText = findViewById(R.id.audioStatusText)
 
                 // Set device ID safely
                 val deviceId = CrashPreventionUtils.ErrorHandling.safeExecute(
@@ -264,9 +227,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showFallbackUI() {
         CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "showFallbackUI", Unit) {
-            // Set basic status text if available
             try {
-                statusText?.text = "⚠️ Error initializing app. Please restart or contact support."
                 permissionsButton?.text = "Restart App"
                 permissionsButton?.setOnClickListener {
                     recreate() // Try to restart the activity
@@ -295,7 +256,6 @@ class MainActivity : AppCompatActivity() {
                         DataSyncManager.syncAll(applicationContext)
                         withContext(Dispatchers.Main) {
                             updateWidgetsSafely()
-                            updateDataCollectionStatus()
                         }
                     }
                 } else {
@@ -611,55 +571,15 @@ class MainActivity : AppCompatActivity() {
      */
     private fun updatePermissionStatusSafely() {
         CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updatePermissionStatus", Unit) {
-            val status = StringBuilder()
-            status.append("Permission Status:\n\n")
-
-            // Check core permissions safely
-            for (permission in corePermissions) {
-                val isGranted = CrashPreventionUtils.hasPermission(this, permission)
-                val permissionName = getReadablePermissionName(permission)
-                status.append("• $permissionName: ${if (isGranted) "✅" else "❌"}\n")
-            }
-
-            // Additional permissions based on Android version
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val backgroundLocationGranted = CrashPreventionUtils.hasPermission(
-                    this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                )
-                status.append("• Background Location: ${if (backgroundLocationGranted) "✅" else "❌"}\n")
-            }
-
-            if (Build.VERSION.SDK_INT >= 33) {
-                val notificationPermissionGranted = CrashPreventionUtils.hasPermission(
-                    this, Manifest.permission.POST_NOTIFICATIONS
-                )
-                status.append("• Notifications: ${if (notificationPermissionGranted) "✅" else "❌"}\n")
-            }
-
-            if (Build.VERSION.SDK_INT >= 34) {
-                for (permission in android14PlusPermissions) {
-                    val isGranted = CrashPreventionUtils.hasPermission(this, permission)
-                    val permissionName = getReadablePermissionName(permission)
-                    status.append("• $permissionName: ${if (isGranted) "✅" else "❌"}\n")
-                }
-            }
-
-            status.append("\n")
-
-            // Summary
-            if (areAllRequiredPermissionsGrantedSafely()) {
-                status.append("✅ All essential permissions granted.\nServices are running in the background.")
+            val allGranted = areAllRequiredPermissionsGrantedSafely()
+            if (allGranted) {
                 permissionsButton.text = "Permissions: All Granted"
                 syncButton.isEnabled = true
-                updateAudioButtonStatesSafely()
             } else {
-                status.append("⚠️ Some permissions are missing.\nClick 'Grant Permissions' to continue setup.")
                 permissionsButton.text = "Grant Missing Permissions"
                 syncButton.isEnabled = false
-                updateAudioButtonStatesSafely()
             }
-
-            statusText.text = status.toString()
+            updateAudioButtonStatesSafely()
         }
     }
 
@@ -671,8 +591,6 @@ class MainActivity : AppCompatActivity() {
 
             if (canUseAudio) {
                 updateRecordingButtonStateSafely()
-            } else {
-                audioStatusText.text = "Audio Recording: Permissions Required"
             }
         }
     }
@@ -687,10 +605,8 @@ class MainActivity : AppCompatActivity() {
 
             if (isRecording) {
                 recordingButton.text = "Stop Audio Recording"
-                audioStatusText.text = "Audio Recording: On"
             } else {
                 recordingButton.text = "Start Audio Recording"
-                audioStatusText.text = "Audio Recording: Off"
             }
         }
     }
@@ -706,108 +622,9 @@ class MainActivity : AppCompatActivity() {
             if (isRecording) {
                 DataSyncManager.toggleRecordingService(applicationContext, false)
                 recordingButton.text = "Start Audio Recording"
-                audioStatusText.text = "Audio Recording: Off"
             } else {
                 DataSyncManager.toggleRecordingService(applicationContext, true)
                 recordingButton.text = "Stop Audio Recording"
-                audioStatusText.text = "Audio Recording: On"
-            }
-        }
-    }
-
-    private fun getReadablePermissionName(permission: String): String {
-        return when (permission) {
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION -> "Location"
-            Manifest.permission.READ_CALL_LOG -> "Call Log"
-            Manifest.permission.READ_SMS -> "SMS"
-            Manifest.permission.READ_PHONE_STATE -> "Phone State"
-            Manifest.permission.READ_CONTACTS -> "Contacts"
-            Manifest.permission.RECEIVE_SMS -> "Receive SMS"
-            Manifest.permission.RECORD_AUDIO -> "Microphone"
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION -> "Background Location"
-            Manifest.permission.POST_NOTIFICATIONS -> "Notifications"
-            Manifest.permission.FOREGROUND_SERVICE_LOCATION -> "Location Service"
-            Manifest.permission.FOREGROUND_SERVICE_MICROPHONE -> "Audio Service"
-            else -> permission.substring(permission.lastIndexOf('.') + 1)
-        }
-    }
-
-    /**
-     * Safe data collection status update
-     */
-    private fun updateDataCollectionStatus() {
-        if (!areAllRequiredPermissionsGrantedSafely()) {
-            // Set default messages when permissions aren't granted
-            CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "setDefaultStatus", Unit) {
-                locationStatusText.text = "Location: Permissions Required"
-                callLogsStatusText.text = "Call Logs: Permissions Required"
-                messagesStatusText.text = "Messages: Permissions Required"
-            }
-            return
-        }
-
-        CoroutineScope(Dispatchers.Main).launch {
-            CrashPreventionUtils.ErrorHandling.safeAsync(TAG, "updateDataCollectionStatus") {
-                val db = CrashPreventionUtils.ErrorHandling.safeExecute(
-                    TAG, "getDatabaseInstance", null
-                ) {
-                    AppDatabase.getInstance(applicationContext)
-                }
-
-                if (db == null) {
-                    withContext(Dispatchers.Main) {
-                        locationStatusText.text = "Location: Database Error"
-                        callLogsStatusText.text = "Call Logs: Database Error"
-                        messagesStatusText.text = "Messages: Database Error"
-                    }
-                    return@safeAsync
-                }
-
-                val locations = CrashPreventionUtils.ErrorHandling.safeExecute(
-                    TAG, "getAllLocations", emptyList()
-                ) {
-                    db.locationDao().getAllLocations()
-                }
-
-                val lastDay = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
-
-                val callLogsCount = CrashPreventionUtils.ErrorHandling.safeExecute(
-                    TAG, "getCallLogsCount", 0
-                ) {
-                    db.callLogDao().getCallLogsCountSince(lastDay)
-                }
-
-                val messagesCount = CrashPreventionUtils.ErrorHandling.safeExecute(
-                    TAG, "getMessagesCount", 0
-                ) {
-                    db.messageDao().getMessagesCountSince(lastDay)
-                }
-
-                withContext(Dispatchers.Main) {
-                    CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updateUIStatus", Unit) {
-                        val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
-
-                        if (locations.isNotEmpty()) {
-                            val latestLocation = locations.maxByOrNull { it.timestamp }
-                            locationStatusText.text = "Location: ${dateFormat.format(Date(latestLocation!!.timestamp))}"
-                        } else {
-                            locationStatusText.text = "Location: Never"
-                        }
-
-                        callLogsStatusText.text = if (callLogsCount > 0) {
-                            "Call Logs: $callLogsCount in last 24h"
-                        } else {
-                            "Call Logs: Never"
-                        }
-
-                        messagesStatusText.text = if (messagesCount > 0) {
-                            "Messages: $messagesCount in last 24h"
-                        } else {
-                            "Messages: Never"
-                        }
-                    }
-                }
             }
         }
     }
@@ -941,7 +758,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             updatePermissionStatusSafely()
-            updateHandler.post(updateRunnable)
 
             if (areAllRequiredPermissionsGrantedSafely()) {
                 CrashPreventionUtils.ErrorHandling.safeAsync(TAG, "checkTriggers") {
@@ -955,15 +771,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onPause", Unit) {
-            updateHandler.removeCallbacks(updateRunnable)
-        }
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onPause", Unit) {}
     }
 
     override fun onDestroy() {
-        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onDestroy", Unit) {
-            updateHandler.removeCallbacks(updateRunnable)
-        }
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onDestroy", Unit) {}
         super.onDestroy()
     }
 }
