@@ -111,7 +111,6 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_call_logs_timestamp_uploaded ON call_logs(timestamp, uploadedToCloud)",
                     "CREATE INDEX IF NOT EXISTS index_messages_timestamp_uploaded ON message_logs(timestamp, uploadedToCloud)",
                     "CREATE INDEX IF NOT EXISTS index_audio_uploaded_status ON audio_recordings(uploadedToCloud, transcriptionStatus)",
-                    "CREATE INDEX IF NOT EXISTS index_location_timestamp ON location_table(timestamp)",
                     "CREATE INDEX IF NOT EXISTS index_network_usage_uploaded ON network_usage(uploadedToCloud)"
                 )
 
