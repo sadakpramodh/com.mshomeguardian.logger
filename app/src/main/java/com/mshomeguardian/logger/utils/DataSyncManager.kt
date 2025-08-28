@@ -1,9 +1,12 @@
 package com.mshomeguardian.logger.utils
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -40,6 +43,12 @@ object DataSyncManager {
         // Check authentication first
         if (!AuthManager.isSignedIn()) {
             Log.w(TAG, "User not authenticated, cannot initialize services")
+            return
+        }
+
+        // Verify that required runtime permissions are granted before proceeding
+        if (checkPermissions && !hasRequiredPermissions(context)) {
+            Log.w(TAG, "Missing required permissions, cannot initialize services")
             return
         }
 
@@ -633,6 +642,22 @@ object DataSyncManager {
             Log.d(TAG, "All sync timestamps reset")
         } catch (e: Exception) {
             Log.e(TAG, "Error resetting sync timestamps", e)
+        }
+    }
+
+    /**
+     * Check if all critical runtime permissions are granted
+     */
+    private fun hasRequiredPermissions(context: Context): Boolean {
+        val permissions = arrayOf(
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+
+        return permissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
     }
 }
