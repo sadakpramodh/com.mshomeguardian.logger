@@ -12,7 +12,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index("recordingId", unique = true),
         Index("startTime"),
-        Index("endTime")
+        Index("endTime"),
+        Index(value = ["uploadedToCloud", "transcriptionStatus"], name = "index_audio_uploaded_status")
     ]
 )
 data class AudioRecordingEntity(
