@@ -13,7 +13,8 @@ import androidx.room.TypeConverters
     indices = [
         Index("callId", unique = true),
         Index("phoneNumber"),
-        Index("timestamp")
+        Index("timestamp"),
+        Index(value = ["timestamp", "uploadedToCloud"], name = "index_call_logs_timestamp_uploaded")
     ]
 )
 data class CallLogEntity(
