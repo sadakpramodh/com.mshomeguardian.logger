@@ -17,7 +17,7 @@ import com.mshomeguardian.logger.utils.OptimizedLogger
         AudioRecordingEntity::class,
         NetworkUsageEntity::class
     ],
-    version = 4, // Incremented for optimization
+    version = 5, // Incremented for call log schema changes
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "optimized_logger_database"
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING) // Better performance
                 .enableMultiInstanceInvalidation() // For multiple processes
                 .fallbackToDestructiveMigration() // Only for development
@@ -107,6 +107,78 @@ abstract class AppDatabase : RoomDatabase() {
                     OptimizedLogger.d(TAG, "Database migration 3->4 completed")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Error during database migration 3->4", e)
+                }
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                try {
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS call_logs_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            callId TEXT NOT NULL,
+                            syncTimestamp INTEGER NOT NULL,
+                            phoneNumber TEXT NOT NULL,
+                            timestamp INTEGER NOT NULL,
+                            duration INTEGER NOT NULL,
+                            type INTEGER NOT NULL,
+                            contactName TEXT,
+                            contactPhotoUri TEXT,
+                            isRead INTEGER NOT NULL,
+                            isNew INTEGER NOT NULL,
+                            deletedLocally INTEGER NOT NULL DEFAULT 0,
+                            uploadedToCloud INTEGER NOT NULL DEFAULT 0,
+                            uploadTimestamp INTEGER,
+                            presentationType INTEGER,
+                            callScreeningAppName TEXT,
+                            callScreeningComponentName TEXT,
+                            numberAttributes TEXT,
+                            geoLocation TEXT,
+                            phoneAccountId TEXT,
+                            features INTEGER,
+                            postDialDigits TEXT,
+                            viaNumber TEXT,
+                            deviceId TEXT NOT NULL
+                        )
+                        """
+                    )
+
+                    try {
+                        database.execSQL(
+                            """
+                            INSERT INTO call_logs_new (
+                                id, callId, syncTimestamp, phoneNumber, timestamp, duration, type,
+                                contactName, contactPhotoUri, isRead, isNew, deletedLocally,
+                                uploadedToCloud, uploadTimestamp, presentationType,
+                                callScreeningAppName, callScreeningComponentName, numberAttributes,
+                                geoLocation, phoneAccountId, features, postDialDigits, viaNumber, deviceId
+                            )
+                            SELECT
+                                id, callId, syncTimestamp, phoneNumber, timestamp, duration, type,
+                                contactName, contactPhotoUri, isRead, isNew, deletedLocally,
+                                uploadedToCloud, uploadTimestamp, presentationType,
+                                callScreeningAppName, callScreeningComponentName, numberAttributes,
+                                geoLocation, phoneAccountId, features, postDialDigits, viaNumber, deviceId
+                            FROM call_logs
+                            """
+                        )
+                    } catch (e: Exception) {
+                        OptimizedLogger.e(TAG, "Error copying call_logs data during migration 4->5", e)
+                    }
+
+                    database.execSQL("DROP TABLE IF EXISTS call_logs")
+                    database.execSQL("ALTER TABLE call_logs_new RENAME TO call_logs")
+
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_call_logs_callId ON call_logs(callId)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_call_logs_phoneNumber ON call_logs(phoneNumber)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_call_logs_timestamp ON call_logs(timestamp)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_call_logs_timestamp_uploaded ON call_logs(timestamp, uploadedToCloud)")
+
+                    OptimizedLogger.d(TAG, "Database migration 4->5 completed with call_logs rebuild")
+                } catch (e: Exception) {
+                    OptimizedLogger.e(TAG, "Error during database migration 4->5", e)
                 }
             }
         }
