@@ -1,6 +1,8 @@
 package com.mshomeguardian.logger.services
 
+import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -10,6 +12,9 @@ import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.LocationMonitoringService
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
+import com.mshomeguardian.logger.ui.AdminSetupActivity
+import com.mshomeguardian.logger.services.DeviceAdminService
+import com.mshomeguardian.logger.services.DeviceAdminReceiver
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +67,28 @@ class BootReceiver : BroadcastReceiver() {
                 }
             } else {
                 Log.d(TAG, "User not authenticated on boot; services not started")
+            }
+
+            // Ensure device admin is active
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(context, DeviceAdminReceiver::class.java)
+            if (!dpm.isAdminActive(adminComponent)) {
+                val setupIntent = Intent(context, AdminSetupActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(setupIntent)
+            }
+
+            // Start background service handling admin actions
+            try {
+                val adminServiceIntent = Intent(context, DeviceAdminService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(adminServiceIntent)
+                } else {
+                    context.startService(adminServiceIntent)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start DeviceAdminService", e)
             }
         }
     }
