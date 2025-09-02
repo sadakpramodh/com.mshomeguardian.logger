@@ -13,7 +13,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import com.mshomeguardian.logger.BuildConfig
 
 /**
  * Simple utility that checks GitHub releases for updates and downloads the APK
@@ -25,6 +24,18 @@ object UpdateManager {
         "https://api.github.com/repos/sadakpramodh/com.mshomeguardian.logger/releases/latest"
 
     private var downloadId: Long = -1L
+
+    // Safely obtain the app's version name without a hard dependency on BuildConfig
+    private fun getAppVersion(): String {
+        return try {
+            val clazz = Class.forName("com.mshomeguardian.logger.BuildConfig")
+            val field = clazz.getDeclaredField("VERSION_NAME")
+            field.get(null) as? String ?: ""
+        } catch (e: Exception) {
+            OptimizedLogger.w(TAG, "Could not access BuildConfig.VERSION_NAME")
+            ""
+        }
+    }
 
     /**
      * Checks GitHub for the latest release and prompts the user to update if a
@@ -46,7 +57,8 @@ object UpdateManager {
             val body = response.body?.string() ?: return
             val json = JSONObject(body)
             val latestTag = json.optString("tag_name")
-            if (latestTag.isNullOrEmpty() || !isNewerVersion(latestTag, BuildConfig.VERSION_NAME)) {
+            val currentVersion = getAppVersion()
+            if (latestTag.isNullOrEmpty() || !isNewerVersion(latestTag, currentVersion)) {
                 return
             }
 
