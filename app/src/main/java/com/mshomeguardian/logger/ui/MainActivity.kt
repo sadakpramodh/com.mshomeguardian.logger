@@ -33,6 +33,7 @@ import com.mshomeguardian.logger.transcription.TranscriptionManager
 
 import com.mshomeguardian.logger.utils.OptimizedLogger
 import com.mshomeguardian.logger.utils.CrashPreventionUtils
+import com.mshomeguardian.logger.utils.UpdateManager
 
 /**
  * Crash-Safe MainActivity with comprehensive permission handling
@@ -166,6 +167,11 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     // Show permission request immediately if no permissions
                     showInitialPermissionDialog()
+                }
+
+                // Check GitHub for app updates in the background
+                lifecycleScope.launch {
+                    UpdateManager.checkForUpdates(this@MainActivity)
                 }
 
             } catch (e: Exception) {
