@@ -23,6 +23,9 @@ data class DeviceInfoEntity(
     val device: String,                   // Device codename
     val hardware: String,                 // Hardware name
 
+    // Timezone info
+    val timezone: String? = null,         // Device timezone ID
+
     // Android info
     val androidVersion: String,           // Android OS version
     val sdkVersion: String,               // Android SDK version

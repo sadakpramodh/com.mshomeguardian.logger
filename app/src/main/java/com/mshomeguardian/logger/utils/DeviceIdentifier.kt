@@ -69,6 +69,13 @@ object DeviceIdentifier {
         val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         deviceInfo["android_id"] = androidId ?: "unknown"
 
+        // Timezone information
+        try {
+            deviceInfo["timezone"] = java.util.TimeZone.getDefault().id
+        } catch (e: Exception) {
+            deviceInfo["timezone"] = "unknown"
+        }
+
         // Telephony information
         try {
             val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager

@@ -17,7 +17,7 @@ import com.mshomeguardian.logger.utils.OptimizedLogger
         AudioRecordingEntity::class,
         NetworkUsageEntity::class
     ],
-    version = 9, // Incremented to force clean migration
+    version = 10, // Incremented to include timezone in device info
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

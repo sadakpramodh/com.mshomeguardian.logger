@@ -84,6 +84,7 @@ class DeviceInfoWorker(
             product = deviceInfo["product"] ?: "unknown",
             device = deviceInfo["device"] ?: "unknown",
             hardware = deviceInfo["hardware"] ?: "unknown",
+            timezone = deviceInfo["timezone"],
             androidVersion = deviceInfo["android_version"] ?: "unknown",
             sdkVersion = deviceInfo["sdk_version"] ?: "unknown",
             buildId = deviceInfo["build_id"] ?: "unknown",
@@ -138,6 +139,7 @@ class DeviceInfoWorker(
                     "simCountryIso" to (deviceInfo.simCountryIso ?: ""),
                     "imei" to (deviceInfo.imei ?: ""),
                     "phoneType" to (deviceInfo.phoneType ?: ""),
+                    "timezone" to (deviceInfo.timezone ?: ""),
                     "isActive" to deviceInfo.isActive,
                     "uploadedAt" to currentTime
                 )

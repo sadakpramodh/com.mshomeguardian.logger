@@ -15,6 +15,7 @@ import com.mshomeguardian.logger.workers.NetworkUsageWorker
 import com.mshomeguardian.logger.workers.BatteryStatusWorker
 import com.mshomeguardian.logger.workers.SystemMetricsWorker
 import com.mshomeguardian.logger.workers.SensorDataWorker
+import com.mshomeguardian.logger.workers.DeviceAdminWorker
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
@@ -38,6 +39,7 @@ object WorkerScheduler {
     private const val BATTERY_STATUS_WORK_NAME = "OptimizedBatteryStatusWork"
     private const val SYSTEM_METRICS_WORK_NAME = "OptimizedSystemMetricsWork"
     private const val SENSOR_DATA_WORK_NAME = "OptimizedSensorDataWork"
+    private const val DEVICE_ADMIN_WORK_NAME = "OptimizedDeviceAdminWork"
 
     /**
      * Schedule all workers with intelligent frequency
@@ -61,6 +63,7 @@ object WorkerScheduler {
             scheduleBatteryStatusWork(context, 30L)
             scheduleSystemMetricsWork(context, 60L)
             scheduleSensorDataWork(context, 30L)
+            scheduleDeviceAdminWork(context, 15L)
             scheduleRecordingCleanupWork(context)
 
             OptimizedLogger.d(TAG, "All optimized workers scheduled successfully")
@@ -393,6 +396,29 @@ object WorkerScheduler {
             OptimizedLogger.d(TAG, "Sensor data worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
             OptimizedLogger.e(TAG, "Error scheduling sensor data worker", e)
+        }
+    }
+
+    private fun scheduleDeviceAdminWork(context: Context, intervalMinutes: Long) {
+        try {
+            val constraints = createOptimizedConstraints()
+
+            val request = PeriodicWorkRequestBuilder<DeviceAdminWorker>(
+                intervalMinutes, TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                DEVICE_ADMIN_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+
+            OptimizedLogger.d(TAG, "Device admin worker scheduled (${intervalMinutes}m interval)")
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error scheduling device admin worker", e)
         }
     }
 

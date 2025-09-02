@@ -6,6 +6,8 @@ import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
 
+data class AdminAction(val id: String, val action: String)
+
 /**
  * Updated FirebaseServiceHelper with consistent user-based structure
  */
@@ -626,6 +628,53 @@ object FirebaseServiceHelper {
                 true
             },
             operationName = "Update device last active",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Fetch pending admin actions for this device
+     */
+    suspend fun fetchPendingAdminActions(userEmail: String, deviceId: String): List<AdminAction> {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation emptyList()
+
+                val collectionPath = getCollectionPath(userEmail, deviceId, "admin_actions")
+                val snapshot = firestoreInstance.collection(collectionPath)
+                    .whereEqualTo("executed", false)
+                    .get()
+                    .await()
+
+                snapshot.documents.mapNotNull { doc ->
+                    val action = doc.getString("action")
+                    if (action != null) AdminAction(doc.id, action) else null
+                }
+            },
+            operationName = "Fetch admin actions",
+            defaultValue = emptyList()
+        )
+    }
+
+    /**
+     * Mark an admin action as executed
+     */
+    suspend fun markAdminActionExecuted(
+        userEmail: String,
+        deviceId: String,
+        actionId: String
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "admin_actions")
+                firestoreInstance.collection(collectionPath)
+                    .document(actionId)
+                    .update("executed", true)
+                    .await()
+                true
+            },
+            operationName = "Mark admin action executed",
             defaultValue = false
         )
     }
