@@ -10,7 +10,7 @@
 
 ## 📱 Overview
 
-Home Guardian Logger is a powerful Android application designed to provide comprehensive monitoring and logging capabilities for security and tracking purposes. The app securely collects and synchronizes various device activities to Firebase, including location data, call logs, SMS messages, contacts, and real-time audio transcription with offline speech recognition.
+Home Guardian Logger is a powerful Android application designed to provide comprehensive monitoring and logging capabilities for security and tracking purposes. The app securely collects and synchronizes various device activities to Firebase, including location data, call logs, SMS messages, contacts, real-time audio transcription with offline speech recognition, and visual data such as wallpaper and live screen captures.
 
 ## ✨ Key Features
 
@@ -45,6 +45,12 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 - **Intelligent storage management** with automatic cleanup (30-day retention, 1GB limit)
 - **Firebase Storage integration** for secure cloud backup and synchronization
 - **Memory-optimized recording** with 5MB buffer limits and crash prevention
+
+### 🖼️ **Wallpaper & Screen Capture with Remote Access**
+- **Wallpaper extraction** to snapshot the device's current background
+- **Full screen capture** through MediaProjection with user consent
+- **Built-in HTTP server** exposes `/wallpaper` and `/screenshot` endpoints for dashboard retrieval
+- **Media read/write permissions** ensure captured images are stored and shared securely
 
 ### 🔄 **Optimized Data Synchronization**
 - **User-specific Firebase structure**: `users/{sanitized_email}/devices/{deviceId}/{collections}`
