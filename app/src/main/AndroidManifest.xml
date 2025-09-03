@@ -40,6 +40,7 @@
     <!-- CRITICAL: For Android 14+ foreground service types -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <!-- Storage permissions for older Android versions -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -48,6 +49,8 @@
         android:maxSdkVersion="32" />
     <!-- For Android 13+ (READ_MEDIA_* permissions) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <!-- Features required -->
     <uses-feature android:name="android.hardware.location" android:required="false" />
@@ -127,6 +130,13 @@
             android:exported="false"
             android:foregroundServiceType="microphone"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Service to capture wallpaper and screen contents -->
+        <service
+            android:name=".services.ScreenContentService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- Home Screen Widget -->
         <receiver
