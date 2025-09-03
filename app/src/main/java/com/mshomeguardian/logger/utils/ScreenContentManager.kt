@@ -26,8 +26,15 @@ object ScreenContentManager {
      */
     fun captureWallpaper(context: Context): File {
         val wallpaperManager = WallpaperManager.getInstance(context)
-        val drawable = wallpaperManager.drawable
-        val bitmap = Bitmap.createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
+        val drawable = wallpaperManager.drawable ?: return File(
+            context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+            "wallpaper.png"
+        ).apply { createNewFile() }
+        val bitmap = Bitmap.createBitmap(
+            drawable.intrinsicWidth,
+            drawable.intrinsicHeight,
+            Bitmap.Config.ARGB_8888
+        )
         val canvas = android.graphics.Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
         drawable.draw(canvas)
