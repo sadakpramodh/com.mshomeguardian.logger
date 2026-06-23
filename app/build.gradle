@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     id 'com.android.application'
@@ -7,13 +8,12 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
-def keystorePropertiesFile = rootProject.file("keys.properties")
+// Load signing configuration from keys.properties (optional for debug builds)
 def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keys.properties")
 
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
-} else {
-    throw new GradleException("Missing keys.properties. Release signing is required to avoid signature mismatches.")
 }
 
 android {
@@ -30,12 +30,30 @@ android {
         multiDexEnabled true
     }
 
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                def storeFilePath = keystoreProperties.getProperty("storeFile")
+                def storePasswordValue = keystoreProperties.getProperty("storePassword")
+                def keyAliasValue = keystoreProperties.getProperty("keyAlias")
+                def keyPasswordValue = keystoreProperties.getProperty("keyPassword")
+
+                if (storeFilePath && storePasswordValue && keyAliasValue && keyPasswordValue) {
+                    storeFile file(storeFilePath)
+                    storePassword storePasswordValue
+                    keyAlias keyAliasValue
+                    keyPassword keyPasswordValue
+                }
+            }
+        }
+    }
+
     // ADD: APK Splitting for smaller downloads
     splits {
         abi {
             enable true
             reset()
-            include "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
+            include "arm64-v8a", "armeabi-v7a"
             universalApk false
         }
         density {
@@ -57,35 +75,11 @@ android {
         }
     }
 
-    signingConfigs {
-        release {
-            def storeFilePath = keystoreProperties.getProperty("storeFile")
-            def storePasswordValue = keystoreProperties.getProperty("storePassword")
-            def keyAliasValue = keystoreProperties.getProperty("keyAlias")
-            def keyPasswordValue = keystoreProperties.getProperty("keyPassword")
-
-            if (!storeFilePath || !storePasswordValue || !keyAliasValue || !keyPasswordValue) {
-                throw new GradleException("keys.properties must define storeFile, storePassword, keyAlias, and keyPassword.")
-            }
-
-            def releaseStoreFile = file(storeFilePath)
-            if (!releaseStoreFile.exists()) {
-                throw new GradleException("Keystore file not found: ${releaseStoreFile}")
-            }
-
-            storeFile releaseStoreFile
-            storePassword storePasswordValue
-            keyAlias keyAliasValue
-            keyPassword keyPasswordValue
-        }
-    }
-
     buildTypes {
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
 
             // ADDED: Additional optimizations for JNA/Vosk
             proguardFiles 'proguard-rules.pro'
@@ -93,8 +87,12 @@ android {
         debug {
             minifyEnabled false
             debuggable true
-            signingConfig signingConfigs.release
         }
+    }
+
+    // Apply signing config to release builds if keys.properties exists
+    if (keystorePropertiesFile.exists()) {
+        buildTypes.release.signingConfig signingConfigs.release
     }
 
     compileOptions {
