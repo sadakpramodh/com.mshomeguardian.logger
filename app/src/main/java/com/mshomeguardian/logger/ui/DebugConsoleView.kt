@@ -2,15 +2,12 @@ package com.mshomeguardian.logger.ui
 
 import android.content.Context
 import android.util.AttributeSet
-import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.ImageButton
-import android.widget.ImageView
-import android.widget.ScrollView
 import android.graphics.Color
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -18,10 +15,19 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.mshomeguardian.logger.utils.ConsoleLogger
 import com.mshomeguardian.logger.utils.ConsoleLogEntry
 import com.mshomeguardian.logger.utils.LogLevel
+import com.mshomeguardian.logger.utils.applyRoundedBackground
+import com.mshomeguardian.logger.utils.dp
+import com.mshomeguardian.logger.utils.onPrimaryColor
+import com.mshomeguardian.logger.utils.onSurfaceColor
+import com.mshomeguardian.logger.utils.onSurfaceVariantColor
+import com.mshomeguardian.logger.utils.outlineColor
+import com.mshomeguardian.logger.utils.primaryColor
+import com.mshomeguardian.logger.utils.surfaceColor
+import com.mshomeguardian.logger.utils.surfaceVariantColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 /**
  * Resizable debug console view for displaying colored logs
@@ -60,7 +66,10 @@ class DebugConsoleView @JvmOverloads constructor(
     private fun setupUI() {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 300)
+            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            applyRoundedBackground(context.surfaceColor(), context.outlineColor(), radiusDp = 18)
+            elevation = dp(8).toFloat()
         }
         
         // Header
@@ -68,43 +77,44 @@ class DebugConsoleView @JvmOverloads constructor(
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                50
+                dp(48)
             )
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding(dp(12), 0, dp(12), 0)
+            setBackgroundColor(context.primaryColor())
             
             statsText = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
                 text = "Logs: 0 | Debug: 0 | Info: 0 | Warnings: 0 | Errors: 0"
-                setTextColor(Color.WHITE)
-                textSize = 10f
+                setTextColor(context.onPrimaryColor())
+                textSize = 11f
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(12, 0, 12, 0)
+                setPadding(0, 0, dp(8), 0)
             }
             addView(statsText)
             
             expandCollapseBtn = ImageButton(context).apply {
-                layoutParams = LinearLayout.LayoutParams(40, ViewGroup.LayoutParams.MATCH_PARENT)
+                layoutParams = LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT)
                 setBackgroundColor(Color.TRANSPARENT)
                 setImageResource(android.R.drawable.ic_media_play)
-                setColorFilter(Color.WHITE)
+                setColorFilter(context.onPrimaryColor())
                 setOnClickListener { toggleExpand() }
             }
             addView(expandCollapseBtn)
             
             clearBtn = ImageButton(context).apply {
-                layoutParams = LinearLayout.LayoutParams(40, ViewGroup.LayoutParams.MATCH_PARENT)
+                layoutParams = LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT)
                 setBackgroundColor(Color.TRANSPARENT)
                 setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-                setColorFilter(Color.WHITE)
+                setColorFilter(context.onPrimaryColor())
                 setOnClickListener { consoleLogger.clearLogs() }
             }
             addView(clearBtn)
             
             closeBtn = ImageButton(context).apply {
-                layoutParams = LinearLayout.LayoutParams(40, ViewGroup.LayoutParams.MATCH_PARENT)
+                layoutParams = LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.MATCH_PARENT)
                 setBackgroundColor(Color.TRANSPARENT)
                 setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-                setColorFilter(Color.parseColor("#FF5252"))
+                setColorFilter(context.onPrimaryColor())
                 setOnClickListener { visibility = View.GONE }
             }
             addView(closeBtn)
@@ -119,7 +129,8 @@ class DebugConsoleView @JvmOverloads constructor(
                 0,
                 1f
             )
-            setBackgroundColor(Color.parseColor("#0D0D0D"))
+            setBackgroundColor(context.surfaceColor())
+            setPadding(0, dp(8), 0, 0)
             visibility = View.GONE
             
             logsRecyclerView = RecyclerView(context).apply {
@@ -129,7 +140,7 @@ class DebugConsoleView @JvmOverloads constructor(
                 )
                 layoutManager = LinearLayoutManager(context)
                 adapter = logAdapter
-                setBackgroundColor(Color.parseColor("#0D0D0D"))
+                setBackgroundColor(context.surfaceVariantColor())
             }
             addView(logsRecyclerView)
         }
@@ -137,8 +148,8 @@ class DebugConsoleView @JvmOverloads constructor(
         
         // Resize handle
         resizeHandle = View(context).apply {
-            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 8)
-            setBackgroundColor(Color.parseColor("#2A2A2A"))
+            layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4))
+            setBackgroundColor(context.outlineColor())
             isHapticFeedbackEnabled = true
         }
         root.addView(resizeHandle)
@@ -191,7 +202,9 @@ class DebugConsoleView @JvmOverloads constructor(
         scope.launch {
             consoleLogger.logsFlow.collect { logs ->
                 logAdapter.submitList(logs.takeLast(100))
-                logsRecyclerView.scrollToPosition(logs.size.coerceAtLeast(1) - 1)
+                if (logs.isNotEmpty()) {
+                    logsRecyclerView.scrollToPosition(logs.size - 1)
+                }
                 updateStats()
             }
         }
@@ -216,10 +229,10 @@ class DebugConsoleView @JvmOverloads constructor(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                setTextColor(Color.WHITE)
+                setTextColor(context.onSurfaceColor())
                 textSize = 11f
-                setPadding(8, 4, 8, 4)
-                setBackgroundColor(Color.parseColor("#1A1A1A"))
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                setBackgroundColor(context.surfaceColor())
             }
             return LogViewHolder(view)
         }
@@ -242,4 +255,9 @@ class DebugConsoleView @JvmOverloads constructor(
     }
     
     private class LogViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        scope.cancel()
+    }
 }

@@ -3,8 +3,12 @@ package com.mshomeguardian.logger.utils
 import android.app.Activity
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.util.Log
 import com.mshomeguardian.logger.ui.DebugConsoleView
 import com.mshomeguardian.logger.ui.SyncStatsView
@@ -33,6 +37,10 @@ class DebugFeaturesManager(private val activity: Activity) {
     }
     
     private var isInitialized = false
+
+    private fun dp(value: Int): Int {
+        return (value * activity.resources.displayMetrics.density).toInt()
+    }
     
     /**
      * Initialize all debug features
@@ -47,17 +55,47 @@ class DebugFeaturesManager(private val activity: Activity) {
             syncStatsManager = SyncStatsManager(activity.applicationContext)
             performanceMonitor = PerformanceMetricsMonitor(activity.applicationContext)
             
-            // Create and add debug console
-            debugConsoleView = DebugConsoleView(activity)
-            rootContainer.addView(debugConsoleView)
-            
+            val debugOverlayContainer = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
             // Create and add sync stats view
             syncStatsView = SyncStatsView(activity)
             syncStatsView.setSyncStatsManager(syncStatsManager)
-            rootContainer.addView(syncStatsView, 0)
+            debugOverlayContainer.addView(
+                syncStatsView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            // Create and add debug console
+            debugConsoleView = DebugConsoleView(activity)
+            debugConsoleView.visibility = View.GONE
+            debugOverlayContainer.addView(
+                debugConsoleView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            rootContainer.addView(
+                debugOverlayContainer,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.BOTTOM
+                    leftMargin = dp(12)
+                    rightMargin = dp(12)
+                    bottomMargin = dp(12)
+                }
+            )
             
-            // Setup triple-tap detector
-            TripleTapDetector(deviceIdTextView) {
+            // Setup 4-tap detector for debug display
+            TripleTapDetector(deviceIdTextView, requiredTapCount = 4) {
                 toggleDebugDisplay()
                 logDebugToggle()
             }
@@ -166,7 +204,8 @@ class DebugFeaturesManager(private val activity: Activity) {
         try {
             val newState = !syncStatsManager.isDebugConsoleEnabled()
             syncStatsManager.setDebugConsoleEnabled(newState)
-            syncStatsView.toggle()
+            syncStatsView.visibility = if (newState) View.VISIBLE else View.GONE
+            debugConsoleView.visibility = if (newState) View.VISIBLE else View.GONE
             
             if (newState) {
                 consoleLogger.info(TAG, "🔍 Debug console enabled")
@@ -213,10 +252,12 @@ class DebugFeaturesManager(private val activity: Activity) {
     fun destroy() {
         stopPerformanceMonitoring()
         scope.cancel()
+        isInitialized = false
+        instance = null
     }
     
     private fun logDebugToggle() {
-        consoleLogger.info(TAG, "🎯 Debug display toggled via triple-tap")
+        consoleLogger.info(TAG, "🎯 Debug display toggled via 4-tap")
     }
     
     private fun startPerformanceMonitoring() {

@@ -2,18 +2,27 @@ package com.mshomeguardian.logger.ui
 
 import android.content.Context
 import android.util.AttributeSet
-import android.view.LayoutInflater
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
-import android.graphics.Color
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.mshomeguardian.logger.utils.SyncStatsManager
+import com.mshomeguardian.logger.utils.applyRoundedBackground
+import com.mshomeguardian.logger.utils.dp
+import com.mshomeguardian.logger.utils.errorColor
+import com.mshomeguardian.logger.utils.infoColor
+import com.mshomeguardian.logger.utils.onSurfaceColor
+import com.mshomeguardian.logger.utils.onSurfaceVariantColor
+import com.mshomeguardian.logger.utils.outlineColor
+import com.mshomeguardian.logger.utils.successColor
+import com.mshomeguardian.logger.utils.surfaceColor
+import com.mshomeguardian.logger.utils.surfaceVariantColor
+import com.mshomeguardian.logger.utils.warningColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlin.math.max
 
 /**
  * Sync stats display view showing last sync time and counts
@@ -28,6 +37,7 @@ class SyncStatsView @JvmOverloads constructor(
     private val scope = CoroutineScope(Dispatchers.Main)
     
     private lateinit var statsContainer: LinearLayout
+    private lateinit var titleText: TextView
     private lateinit var lastSyncTimeText: TextView
     private lateinit var syncCountText: TextView
     private lateinit var itemsCountText: TextView
@@ -41,42 +51,54 @@ class SyncStatsView @JvmOverloads constructor(
         statsContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setBackgroundColor(Color.parseColor("#263238"))
-            elevation = 4f
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            applyRoundedBackground(context.surfaceColor(), context.outlineColor(), radiusDp = 16)
+            elevation = dp(4).toFloat()
+            
+            titleText = TextView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                text = "Sync stats"
+                setTextColor(context.onSurfaceColor())
+                textSize = 15f
+                setPadding(0, 0, 0, dp(6))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+            addView(titleText)
             
             lastSyncTimeText = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 text = "Last Sync: Never"
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                setPadding(16, 8, 16, 4)
+                setTextColor(context.onSurfaceVariantColor())
+                textSize = 13f
+                setPadding(0, 0, 0, dp(2))
             }
             addView(lastSyncTimeText)
             
             syncCountText = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 text = "Total Syncs: 0"
-                setTextColor(Color.parseColor("#A8D5BA"))
-                textSize = 11f
-                setPadding(16, 2, 16, 2)
+                setTextColor(context.onSurfaceVariantColor())
+                textSize = 13f
+                setPadding(0, 0, 0, dp(2))
             }
             addView(syncCountText)
             
             itemsCountText = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 text = "Items Logged: 0"
-                setTextColor(Color.parseColor("#FFB74D"))
-                textSize = 11f
-                setPadding(16, 2, 16, 2)
+                setTextColor(context.onSurfaceVariantColor())
+                textSize = 13f
+                setPadding(0, 0, 0, dp(2))
             }
             addView(itemsCountText)
             
             statusText = TextView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 text = "Status: Ready"
-                setTextColor(Color.parseColor("#EF9A9A"))
-                textSize = 11f
-                setPadding(16, 2, 16, 8)
+                setTextColor(context.successColor())
+                textSize = 13f
+                setPadding(0, dp(6), 0, 0)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
             }
             addView(statusText)
         }
@@ -114,9 +136,10 @@ class SyncStatsView @JvmOverloads constructor(
         statusText.text = status
         
         val statusColor = when {
-            stats.isSyncing -> Color.parseColor("#81C784")
-            stats.lastSyncStatus == "Success" -> Color.parseColor("#4CAF50")
-            else -> Color.parseColor("#FF7043")
+            stats.isSyncing -> context.infoColor()
+            stats.lastSyncStatus == "Success" -> context.successColor()
+            stats.lastSyncStatus.equals("Warning", ignoreCase = true) -> context.warningColor()
+            else -> context.errorColor()
         }
         statusText.setTextColor(statusColor)
     }
@@ -131,5 +154,10 @@ class SyncStatsView @JvmOverloads constructor(
     
     fun toggle() {
         visibility = if (visibility == View.VISIBLE) View.GONE else View.VISIBLE
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        scope.cancel()
     }
 }

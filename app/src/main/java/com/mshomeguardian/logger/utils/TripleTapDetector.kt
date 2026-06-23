@@ -6,11 +6,12 @@ import android.view.MotionEvent
 import androidx.core.view.GestureDetectorCompat
 
 /**
- * Detects triple-tap gestures on a View
+ * Detects a rapid tap sequence on a View.
  */
 class TripleTapDetector(
     private val view: View,
-    private val onTripleTap: () -> Unit
+    private val requiredTapCount: Int = 3,
+    private val onTapSequence: () -> Unit
 ) : View.OnTouchListener {
     
     private var tapCount = 0
@@ -18,6 +19,7 @@ class TripleTapDetector(
     private val tapThreshold = 300L // ms between taps
     
     init {
+        view.isClickable = true
         view.setOnTouchListener(this)
     }
     
@@ -36,9 +38,9 @@ class TripleTapDetector(
                 
                 lastTapTime = currentTime
                 
-                if (tapCount == 3) {
+                if (tapCount == requiredTapCount) {
                     tapCount = 0
-                    onTripleTap()
+                    onTapSequence()
                 }
                 return true
             }

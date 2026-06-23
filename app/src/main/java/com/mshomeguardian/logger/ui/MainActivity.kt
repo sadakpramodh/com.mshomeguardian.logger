@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -23,6 +24,8 @@ import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.LocationMonitoringService
 import com.mshomeguardian.logger.utils.DataSyncManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.QuickDebugSetup
+import com.mshomeguardian.logger.utils.initDebugFeatures
 import com.mshomeguardian.logger.widget.HomeGuardianWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -157,6 +160,9 @@ class MainActivity : AppCompatActivity() {
                     AuthManager.getCurrentUser()?.email ?: "Unknown"
                 }
                 accountInfoText.text = "Account: $userEmail"
+
+                val rootContainer = findViewById<ViewGroup>(android.R.id.content)
+                initDebugFeatures(rootContainer, deviceIdText)
 
                 setupButtonListeners()
                 updatePermissionStatusSafely()
@@ -781,7 +787,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onDestroy", Unit) {}
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "onDestroy", Unit) {
+            QuickDebugSetup.destroy()
+        }
         super.onDestroy()
     }
 }
