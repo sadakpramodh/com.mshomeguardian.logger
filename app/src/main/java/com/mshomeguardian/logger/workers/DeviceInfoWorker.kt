@@ -1,7 +1,14 @@
 package com.mshomeguardian.logger.workers
 
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.content.Context
+import android.content.pm.PackageManager
+import android.nfc.NfcAdapter
+import android.net.wifi.WifiManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.mshomeguardian.logger.data.AppDatabase
@@ -11,6 +18,7 @@ import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.HashMap
 
 class DeviceInfoWorker(
     context: Context,
@@ -140,9 +148,14 @@ class DeviceInfoWorker(
                     "imei" to (deviceInfo.imei ?: ""),
                     "phoneType" to (deviceInfo.phoneType ?: ""),
                     "timezone" to (deviceInfo.timezone ?: ""),
+                    "buildFingerprint" to Build.FINGERPRINT,
+                    "bootloader" to Build.BOOTLOADER,
+                    "host" to Build.HOST,
+                    "tags" to Build.TAGS,
+                    "radioVersion" to (Build.getRadioVersion() ?: ""),
                     "isActive" to deviceInfo.isActive,
                     "uploadedAt" to currentTime
-                )
+                ) + collectConnectivitySnapshot()
 
                 // Upload using new Firebase structure
                 val success = FirebaseServiceHelper.uploadDeviceInfo(userEmail, deviceId, deviceData)
@@ -164,5 +177,42 @@ class DeviceInfoWorker(
             Log.d(TAG, "Device info already uploaded and up to date")
             return true
         }
+    }
+
+    private fun collectConnectivitySnapshot(): Map<String, Any> {
+        val snapshot = HashMap<String, Any>()
+
+        try {
+            val wifiManager = applicationContext.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val wifiInfo = wifiManager?.connectionInfo
+            snapshot["wifiEnabled"] = wifiManager?.isWifiEnabled ?: false
+            snapshot["wifiRssi"] = wifiInfo?.rssi ?: Int.MIN_VALUE
+            snapshot["wifiLinkSpeedMbps"] = wifiInfo?.linkSpeed ?: -1
+            snapshot["wifiFrequencyMhz"] = wifiInfo?.frequency ?: -1
+            snapshot["wifiSsid"] = wifiInfo?.ssid ?: ""
+            snapshot["wifiBssid"] = wifiInfo?.bssid ?: ""
+
+            val btAdapter = BluetoothAdapter.getDefaultAdapter()
+            snapshot["bluetoothEnabled"] = btAdapter?.isEnabled ?: false
+            snapshot["pairedBluetoothDevices"] = if (
+                btAdapter != null &&
+                ContextCompat.checkSelfPermission(
+                    applicationContext,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                btAdapter.bondedDevices.size
+            } else {
+                0
+            }
+
+            val nfcAdapter = NfcAdapter.getDefaultAdapter(applicationContext)
+            snapshot["nfcEnabled"] = nfcAdapter?.isEnabled ?: false
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to collect connectivity snapshot", e)
+        }
+
+        return snapshot
     }
 }

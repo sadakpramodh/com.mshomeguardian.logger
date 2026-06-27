@@ -74,6 +74,10 @@ class LocationWorker(
                         "altitude" to loc.altitude,
                         "bearing" to loc.bearing.toDouble(),
                         "speed" to loc.speed.toDouble(),
+                        "verticalAccuracy" to if (loc.hasVerticalAccuracy()) loc.verticalAccuracyMeters.toDouble() else -1.0,
+                        "speedAccuracy" to if (loc.hasSpeedAccuracy()) loc.speedAccuracyMetersPerSecond.toDouble() else -1.0,
+                        "bearingAccuracy" to if (loc.hasBearingAccuracy()) loc.bearingAccuracyDegrees.toDouble() else -1.0,
+                        "elapsedRealtimeNanos" to loc.elapsedRealtimeNanos,
                         "deviceId" to deviceId,
                         "provider" to (loc.provider ?: "unknown"),
                         "syncedAt" to System.currentTimeMillis()

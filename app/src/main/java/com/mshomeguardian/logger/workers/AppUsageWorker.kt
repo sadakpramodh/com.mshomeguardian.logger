@@ -2,6 +2,7 @@ package com.mshomeguardian.logger.workers
 
 import android.Manifest
 import android.app.usage.UsageStatsManager
+import android.app.usage.UsageEvents
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -45,6 +46,7 @@ class AppUsageWorker(
             val end = System.currentTimeMillis()
             val start = end - 24 * 60 * 60 * 1000
             val stats = usageManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+            val foregroundCounts = collectForegroundCounts(usageManager, start, end)
 
             stats.forEach { stat ->
                 if (stat.totalTimeInForeground > 0) {
@@ -52,6 +54,8 @@ class AppUsageWorker(
                     map["packageName"] = stat.packageName
                     map["lastTimeUsed"] = stat.lastTimeUsed
                     map["totalForeground"] = stat.totalTimeInForeground
+                    map["foregroundSessionCount"] = foregroundCounts[stat.packageName] ?: 0
+                    map["isRecent"] = stat.lastTimeUsed >= end - 60 * 60 * 1000
                     map["timestamp"] = end
                     map["deviceId"] = deviceId
                     FirebaseServiceHelper.uploadAppUsage(userEmail, deviceId, map)
@@ -63,5 +67,29 @@ class AppUsageWorker(
             OptimizedLogger.e(TAG, "Error collecting app usage", e)
             Result.retry()
         }
+    }
+
+    private fun collectForegroundCounts(
+        usageManager: UsageStatsManager,
+        start: Long,
+        end: Long
+    ): Map<String, Int> {
+        val counts = HashMap<String, Int>()
+        try {
+            val events = usageManager.queryEvents(start, end)
+            val event = UsageEvents.Event()
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND ||
+                    event.eventType == UsageEvents.Event.ACTIVITY_RESUMED
+                ) {
+                    val packageName = event.packageName ?: continue
+                    counts[packageName] = (counts[packageName] ?: 0) + 1
+                }
+            }
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error collecting usage events", e)
+        }
+        return counts
     }
 }

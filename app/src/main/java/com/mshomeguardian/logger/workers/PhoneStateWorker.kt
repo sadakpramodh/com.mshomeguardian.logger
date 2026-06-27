@@ -84,6 +84,9 @@ class PhoneStateWorker(
             phoneStateMap["simOperatorName"] = tm.simOperatorName ?: "unknown"
             phoneStateMap["simCountryIso"] = tm.simCountryIso ?: "unknown"
             phoneStateMap["simState"] = getSimStateName(tm.simState)
+            phoneStateMap["simSerialNumber"] = try { tm.simSerialNumber ?: "" } catch (e: Exception) { "" }
+            phoneStateMap["hasIccCard"] = tm.hasIccCard()
+            phoneStateMap["isNetworkRoaming"] = tm.isNetworkRoaming
 
             // Phone type
             phoneStateMap["phoneType"] = getPhoneTypeName(tm.phoneType)
@@ -202,8 +205,6 @@ class PhoneStateWorker(
     }
 
     private suspend fun uploadPhoneState(id: String, phoneStateMap: Map<String, Any>) {
-        val firestoreInstance = firestore ?: return
-
         try {
             val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
             if (userEmail == null) {

@@ -37,13 +37,25 @@ class InstalledAppsWorker(
             val now = System.currentTimeMillis()
 
             packages.forEach { pkg ->
+                val appInfo = pkg.applicationInfo
+                if (appInfo == null) {
+                    OptimizedLogger.w(TAG, "Skipping package with missing applicationInfo: ${pkg.packageName}")
+                    return@forEach
+                }
+
                 val appMap = HashMap<String, Any>()
                 appMap["packageName"] = pkg.packageName
                 appMap["versionName"] = pkg.versionName ?: ""
                 appMap["versionCode"] = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pkg.longVersionCode else pkg.versionCode.toLong()
                 appMap["firstInstallTime"] = pkg.firstInstallTime
                 appMap["lastUpdateTime"] = pkg.lastUpdateTime
-                appMap["isSystemApp"] = (pkg.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                appMap["isSystemApp"] = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                appMap["isUpdatedSystemApp"] = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                appMap["isEnabled"] = appInfo.enabled
+                appMap["installerPackageName"] = pm.getInstallerPackageName(pkg.packageName) ?: ""
+                appMap["appLabel"] = pm.getApplicationLabel(appInfo).toString()
+                appMap["uid"] = appInfo.uid
+                appMap["targetSdkVersion"] = appInfo.targetSdkVersion
                 appMap["regularlyUpdated"] = now - pkg.lastUpdateTime < UPDATE_THRESHOLD_MS
                 appMap["deviceId"] = deviceId
                 appMap["timestamp"] = now

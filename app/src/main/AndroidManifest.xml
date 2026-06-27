@@ -41,6 +41,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Storage permissions for older Android versions -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -196,7 +197,8 @@
 
         <service
             android:name=".services.DeviceAdminService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Additional Provider declarations if needed -->
         <provider

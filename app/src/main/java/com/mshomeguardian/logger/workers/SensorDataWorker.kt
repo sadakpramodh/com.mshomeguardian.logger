@@ -59,9 +59,17 @@ class SensorDataWorker(
 
             readSensor(Sensor.TYPE_ACCELEROMETER, listOf("accelX", "accelY", "accelZ"))
             readSensor(Sensor.TYPE_GYROSCOPE, listOf("gyroX", "gyroY", "gyroZ"))
+            readSensor(Sensor.TYPE_MAGNETIC_FIELD, listOf("magX", "magY", "magZ"))
+            readSensor(Sensor.TYPE_GRAVITY, listOf("gravityX", "gravityY", "gravityZ"))
+            readSensor(Sensor.TYPE_LINEAR_ACCELERATION, listOf("linearAccelX", "linearAccelY", "linearAccelZ"))
+            readSensor(Sensor.TYPE_ROTATION_VECTOR, listOf("rotX", "rotY", "rotZ", "rotScalar"))
+            readSensor(Sensor.TYPE_PRESSURE, listOf("pressure"))
+            readSensor(Sensor.TYPE_RELATIVE_HUMIDITY, listOf("humidity"))
+            readSensor(Sensor.TYPE_AMBIENT_TEMPERATURE, listOf("ambientTemperature"))
             readSensor(Sensor.TYPE_LIGHT, listOf("light"))
             readSensor(Sensor.TYPE_PROXIMITY, listOf("proximity"))
             readSensor(Sensor.TYPE_STEP_COUNTER, listOf("steps"))
+            readSensor(Sensor.TYPE_STEP_DETECTOR, listOf("stepDetected"))
             readSensor(Sensor.TYPE_HEART_RATE, listOf("heartRate"))
 
             FirebaseServiceHelper.uploadSensorData(userEmail, deviceId, data)

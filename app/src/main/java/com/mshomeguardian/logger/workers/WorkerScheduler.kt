@@ -16,6 +16,7 @@ import com.mshomeguardian.logger.workers.BatteryStatusWorker
 import com.mshomeguardian.logger.workers.SystemMetricsWorker
 import com.mshomeguardian.logger.workers.SensorDataWorker
 import com.mshomeguardian.logger.workers.DeviceAdminWorker
+import com.mshomeguardian.logger.workers.MediaInventoryWorker
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
@@ -40,6 +41,7 @@ object WorkerScheduler {
     private const val SYSTEM_METRICS_WORK_NAME = "OptimizedSystemMetricsWork"
     private const val SENSOR_DATA_WORK_NAME = "OptimizedSensorDataWork"
     private const val DEVICE_ADMIN_WORK_NAME = "OptimizedDeviceAdminWork"
+    private const val MEDIA_INVENTORY_WORK_NAME = "OptimizedMediaInventoryWork"
 
     /**
      * Schedule all workers with intelligent frequency
@@ -63,6 +65,7 @@ object WorkerScheduler {
             scheduleBatteryStatusWork(context, 30L)
             scheduleSystemMetricsWork(context, 60L)
             scheduleSensorDataWork(context, 30L)
+            scheduleMediaInventoryWork(context, 720L)
             scheduleDeviceAdminWork(context, 15L)
             scheduleRecordingCleanupWork(context)
 
@@ -399,6 +402,29 @@ object WorkerScheduler {
         }
     }
 
+    private fun scheduleMediaInventoryWork(context: Context, intervalMinutes: Long) {
+        try {
+            val constraints = createOptimizedConstraints()
+
+            val request = PeriodicWorkRequestBuilder<MediaInventoryWorker>(
+                intervalMinutes, TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                MEDIA_INVENTORY_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+
+            OptimizedLogger.d(TAG, "Media inventory worker scheduled (${intervalMinutes}m interval)")
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error scheduling media inventory worker", e)
+        }
+    }
+
     private fun scheduleDeviceAdminWork(context: Context, intervalMinutes: Long) {
         try {
             val constraints = createOptimizedConstraints()
@@ -467,7 +493,8 @@ object WorkerScheduler {
                 OneTimeWorkRequestBuilder<AppUsageWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<BatteryStatusWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<SystemMetricsWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<SensorDataWorker>().setConstraints(constraints).build()
+                OneTimeWorkRequestBuilder<SensorDataWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<MediaInventoryWorker>().setConstraints(constraints).build()
             )
 
             criticalWorkers.forEach { workManager.enqueue(it) }
@@ -498,7 +525,8 @@ object WorkerScheduler {
                 OneTimeWorkRequestBuilder<AppUsageWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<BatteryStatusWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<SystemMetricsWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<SensorDataWorker>().setConstraints(constraints).build()
+                OneTimeWorkRequestBuilder<SensorDataWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<MediaInventoryWorker>().setConstraints(constraints).build()
             )
 
             workers.forEach { workManager.enqueue(it) }

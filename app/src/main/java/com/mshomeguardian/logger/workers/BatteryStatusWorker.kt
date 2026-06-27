@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.os.Build
+import android.os.PowerManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.mshomeguardian.logger.utils.DeviceIdentifier
@@ -44,6 +46,7 @@ class BatteryStatusWorker(
                 ?: BatteryManager.BATTERY_HEALTH_UNKNOWN
             val temperature = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
             val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
+            val present = intent?.getBooleanExtra(BatteryManager.EXTRA_PRESENT, true) ?: true
 
             val pct = if (scale > 0) level * 100 / scale else 0
             val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
@@ -53,6 +56,23 @@ class BatteryStatusWorker(
                 BatteryManager.BATTERY_PLUGGED_WIRELESS -> "WIRELESS"
                 else -> "UNKNOWN"
             }
+            val batteryManager = applicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val batteryPropertyCapacity = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            } else {
+                -1
+            }
+            val chargeCounter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+            } else {
+                -1
+            }
+            val currentNow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+            } else {
+                -1
+            }
 
             val data = hashMapOf<String, Any>(
                 "level" to pct,
@@ -61,6 +81,11 @@ class BatteryStatusWorker(
                 "health" to health,
                 "temperature" to temperature,
                 "voltage" to voltage,
+                "present" to present,
+                "capacityPercent" to batteryPropertyCapacity,
+                "chargeCounter" to chargeCounter,
+                "currentNow" to currentNow,
+                "powerSaveMode" to powerManager.isPowerSaveMode,
                 "timestamp" to System.currentTimeMillis(),
                 "deviceId" to deviceId
             )
