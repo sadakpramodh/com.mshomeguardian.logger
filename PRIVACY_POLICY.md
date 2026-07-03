@@ -16,7 +16,9 @@ Depending on permissions you grant, Home Guardian may collect:
 - App usage and installed apps information
 - Network usage data
 - Sensor data (for example accelerometer, gyroscope, proximity, light, step count)
+- Health Connect data that you grant access to (for example heart rate, blood pressure, SpO2, respiratory rate, temperature, height, weight, steps)
 - Audio recordings and transcription metadata
+- Digital wellbeing usage snapshots (for example total screen time, app launches, unlock count, top app usage)
 - Diagnostic and sync metadata
 
 ## 2. How We Use Information
@@ -27,6 +29,7 @@ We use collected information to:
 - Store and sync records to the account owner's cloud storage
 - Improve app reliability, diagnostics, and synchronization
 - Support app functionality such as transcription and background collection
+- Support optional health and wellbeing features when connected to Health Connect
 
 ## 3. Data Storage and Sharing
 
@@ -72,4 +75,3 @@ We may update this Privacy Policy from time to time. Updated versions will be po
 If you have any questions about this Privacy Policy, contact:
 
 **Email:** sadakpramodh@outlook.com
-

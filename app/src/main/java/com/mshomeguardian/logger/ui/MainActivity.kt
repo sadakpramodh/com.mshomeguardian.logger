@@ -19,11 +19,14 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import com.mshomeguardian.logger.R
 import com.mshomeguardian.logger.utils.AuthManager
 import com.mshomeguardian.logger.utils.LocationMonitoringService
 import com.mshomeguardian.logger.utils.DataSyncManager
 import com.mshomeguardian.logger.utils.DeviceIdentifier
+import com.mshomeguardian.logger.utils.HealthConnectHelper
 import com.mshomeguardian.logger.utils.QuickDebugSetup
 import com.mshomeguardian.logger.utils.initDebugFeatures
 import com.mshomeguardian.logger.widget.HomeGuardianWidget
@@ -59,7 +62,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var recordingButton: Button
     private lateinit var liveTranscriptionButton: Button
     private lateinit var signOutButton: Button
-    
+    private lateinit var connectHealthButton: Button
+    private lateinit var healthConnectStatusText: TextView
+
+    private val healthConnectPermissionsLauncher = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract(HealthConnectHelper.PROVIDER_PACKAGE_NAME)
+    ) { _ ->
+        lifecycleScope.launch {
+            val grantedPermissions = HealthConnectHelper.getGrantedPermissions(this@MainActivity)
+            withContext(Dispatchers.Main) {
+                if (grantedPermissions.isNotEmpty()) {
+                    Toast.makeText(this@MainActivity, "Google Health connected successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "No Google Health permissions were granted. Open Health Connect and enable at least one permission.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    openHealthConnectManageScreen()
+                }
+                updateHealthConnectStatusSafely()
+            }
+        }
+    }
 
     // Permission arrays with crash-safe access
     private val corePermissions = arrayOf(
@@ -144,6 +169,8 @@ class MainActivity : AppCompatActivity() {
                 recordingButton = findViewById(R.id.recordingButton)
                 liveTranscriptionButton = findViewById(R.id.liveTranscriptionButton)
                 signOutButton = findViewById(R.id.signOutButton)
+                connectHealthButton = findViewById(R.id.connectHealthButton)
+                healthConnectStatusText = findViewById(R.id.healthConnectStatusText)
 
                 // Set device ID safely
                 val deviceId = CrashPreventionUtils.ErrorHandling.safeExecute(
@@ -166,6 +193,7 @@ class MainActivity : AppCompatActivity() {
 
                 setupButtonListeners()
                 updatePermissionStatusSafely()
+                updateHealthConnectStatusSafely()
 
                 // Start services only if permissions are granted
                 if (areAllRequiredPermissionsGrantedSafely()) {
@@ -297,6 +325,90 @@ class MainActivity : AppCompatActivity() {
 
             signOutButton.setOnClickListener {
                 signOutSafely()
+            }
+
+            connectHealthButton.setOnClickListener {
+                connectGoogleHealthSafely()
+            }
+        }
+    }
+
+    private fun connectGoogleHealthSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "connectGoogleHealth", Unit) {
+            when (HealthConnectHelper.getSdkStatus(this)) {
+                HealthConnectClient.SDK_AVAILABLE -> {
+                    healthConnectPermissionsLauncher.launch(
+                        HealthConnectHelper.requiredReadPermissions
+                    )
+                }
+
+                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                    val marketIntent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("market://details?id=${HealthConnectHelper.PROVIDER_PACKAGE_NAME}")
+                    )
+                    try {
+                        startActivity(marketIntent)
+                    } catch (inner: Exception) {
+                        val webIntent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://play.google.com/store/apps/details?id=${HealthConnectHelper.PROVIDER_PACKAGE_NAME}")
+                        )
+                        startActivity(webIntent)
+                    }
+                }
+
+                else -> {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.health_connect_not_available),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun openHealthConnectManageScreen() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "openHealthConnectManageScreen", Unit) {
+            try {
+                val manageIntent = HealthConnectClient.getHealthConnectManageDataIntent(this)
+                startActivity(manageIntent)
+            } catch (e: Exception) {
+                val marketIntent = Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=${HealthConnectHelper.PROVIDER_PACKAGE_NAME}")
+                )
+                startActivity(marketIntent)
+            }
+        }
+    }
+
+    private fun updateHealthConnectStatusSafely() {
+        CrashPreventionUtils.ErrorHandling.safeExecute(TAG, "updateHealthConnectStatus", Unit) {
+            val sdkStatus = HealthConnectHelper.getSdkStatus(this)
+            if (sdkStatus != HealthConnectClient.SDK_AVAILABLE) {
+                healthConnectStatusText.text = getString(R.string.health_connect_not_available)
+                connectHealthButton.isEnabled =
+                    sdkStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED
+                return@safeExecute
+            }
+
+            lifecycleScope.launch {
+                val connected = HealthConnectHelper.hasAnyPermission(this@MainActivity)
+                withContext(Dispatchers.Main) {
+                    healthConnectStatusText.text = if (connected) {
+                        getString(R.string.health_connect_connected)
+                    } else {
+                        getString(R.string.health_connect_not_connected)
+                    }
+                    connectHealthButton.isEnabled = true
+                    connectHealthButton.text = if (connected) {
+                        getString(R.string.health_connect_connected)
+                    } else {
+                        getString(R.string.connect_google_health)
+                    }
+                }
             }
         }
     }
@@ -592,6 +704,7 @@ class MainActivity : AppCompatActivity() {
                 syncButton.isEnabled = false
             }
             updateAudioButtonStatesSafely()
+            updateHealthConnectStatusSafely()
         }
     }
 
@@ -655,6 +768,7 @@ class MainActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) {
                         updateWidgetsSafely()
                         updatePermissionStatusSafely()
+                        updateHealthConnectStatusSafely()
                         Toast.makeText(this@MainActivity, "Home Guardian is now monitoring your device", Toast.LENGTH_SHORT).show()
                     }
                 }

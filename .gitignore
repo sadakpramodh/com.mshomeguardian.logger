@@ -33,9 +33,14 @@ java_pid14660.hprof
 app/src/main/assets/*
 /app/build/
 *.apk
+*.aab
 *.so
 *.hprof
 /app/build/
 /java_pid5604.hprof
-*.apk
-*.so
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Debug build outputs
+app/debug/

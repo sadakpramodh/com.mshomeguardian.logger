@@ -69,6 +69,12 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 - **Sensor data logging** from accelerometer, gyroscope, light, proximity, heart rate, and step counter
 - **Phone state monitoring** with carrier information, SIM details, and call state tracking
 
+### ❤️ **Health Connect & Digital Wellbeing**
+- **Google Health Connect vitals sync** (Heart Rate, Resting HR, Blood Pressure, SpO2, Respiratory Rate, Body Temperature, Weight, Height, Steps)
+- **Digital wellbeing snapshot sync** (screen time, launches, unlocks, unique apps, top app usage)
+- **Partial grant support** (sync continues for granted health record types)
+- **Room-first + Firebase sync pattern** with upload state tracking
+
 ### 🏠 **Enhanced Home Screen Widget**
 - **Real-time weather display** with location-based data and dynamic weather icons
 - **Activity counters** showing data collection statistics for the last 24 hours
@@ -118,6 +124,8 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 │       ├── system_metrics/ (Storage, memory, CPU, display information)
 │       ├── sensor_data/ (Accelerometer, gyroscope, environmental sensors)
 │       ├── phone_state/ (Network, carrier, SIM, call state information)
+│       ├── health_vitals/ (Health Connect vitals based on granted permissions)
+│       ├── digital_wellbeing/ (Usage-based wellbeing snapshots)
 │       └── device_info/ (Device registration and comprehensive hardware data)
 └── 📁 Firebase Storage (User-based file storage)
     └── users/{sanitized_email}/devices/{deviceId}/audio/{filename}
@@ -149,6 +157,8 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 │   ├── BatteryStatusWorker (battery health and charging monitoring)
 │   ├── SystemMetricsWorker (storage, memory, CPU metrics)
 │   ├── SensorDataWorker (accelerometer, gyroscope, environmental data)
+│   ├── HealthVitalsWorker (Health Connect read + Room + Firebase upload)
+│   ├── DigitalWellbeingWorker (wellbeing snapshot + Room + Firebase upload)
 │   ├── RecordingCleanupWorker (storage management with 30-day retention)
 │   └── TranscriptionWorker (audio processing and Firebase upload)
 └── 🔐 Enhanced Authentication System
@@ -317,6 +327,9 @@ mv vosk-model-small-tel-0.4/* app/src/main/assets/model-te/
 - `RECORD_AUDIO` - Audio recording and offline transcription
 - `POST_NOTIFICATIONS` - Service notifications and status updates (Android 13+)
 - `PACKAGE_USAGE_STATS` - App usage statistics (requires Settings permission)
+- `READ_HEART_RATE` / `READ_RESTING_HEART_RATE` - Health Connect heart metrics
+- `READ_BLOOD_PRESSURE` / `READ_OXYGEN_SATURATION` / `READ_RESPIRATORY_RATE` - Health Connect vitals
+- `READ_BODY_TEMPERATURE` / `READ_WEIGHT` / `READ_HEIGHT` / `READ_STEPS` - Health Connect body/activity records
 
 ### **Android 14+ Foreground Service Permissions**
 - `FOREGROUND_SERVICE_LOCATION` - Location monitoring service compliance
@@ -334,7 +347,16 @@ mv vosk-model-small-tel-0.4/* app/src/main/assets/model-te/
 <uses-permission android:name="android.permission.NFC" />
 <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 <uses-permission android:name="android.permission.BODY_SENSORS" />
+<queries>
+    <package android:name="com.google.android.apps.healthdata" />
+</queries>
 ```
+
+### **Health Connect Integration Notes**
+- Current dependency in this repo: `androidx.health.connect:connect-client:1.1.0-alpha12`
+- Android 14+: Health Connect is system-integrated.
+- Android 13 and below: install Health Connect app from Play Store.
+- App visibility in Health Connect appears after onboarding/permission flow is triggered at least once.
 
 ## 🔧 Advanced Configuration
 
@@ -534,6 +556,9 @@ implementation 'net.java.dev.jna:jna:5.9.0@aar'
 // Location Services
 implementation 'com.google.android.gms:play-services-location:21.0.1'
 
+// Health Connect
+implementation 'androidx.health.connect:connect-client:1.1.0-alpha12'
+
 // Networking (Weather API integration)
 implementation 'com.squareup.okhttp3:okhttp:4.11.0'
 ```
@@ -571,6 +596,12 @@ FOREGROUND_SERVICE_MICROPHONE // Required for audio service
 // Check permission status with comprehensive reporting
 CrashPreventionUtils.PermissionStatus.generateReport(context)
 ```
+
+#### **Health Connect Not Listed / Not Connected**
+- Open app and tap **Connect Google Health** to trigger onboarding + permission flow.
+- In Health Connect, grant at least one requested permission (partial grants are supported).
+- Ensure you are testing latest installed APK (manifest aliases/queries must be present).
+- On Android 13 and below, verify Health Connect app is installed and updated.
 
 #### **Background Service Issues**
 ```kotlin

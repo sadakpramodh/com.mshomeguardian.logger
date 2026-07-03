@@ -37,6 +37,22 @@
             android:text="Grant Permissions"
             android:layout_marginBottom="16dp" />
 
+        <TextView
+            android:id="@+id/healthConnectStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/health_connect_not_connected"
+            android:textSize="14sp"
+            android:textColor="#2E7D32"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/connectHealthButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/connect_google_health"
+            android:layout_marginBottom="16dp" />
+
         <Button
             android:id="@+id/syncButton"
             android:layout_width="match_parent"

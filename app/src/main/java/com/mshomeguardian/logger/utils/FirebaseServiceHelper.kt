@@ -574,6 +574,54 @@ object FirebaseServiceHelper {
     }
 
     /**
+     * Upload Health Connect vitals.
+     */
+    suspend fun uploadHealthVital(
+        userEmail: String,
+        deviceId: String,
+        vitalData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+                val entryId = vitalData["entryId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "health_vitals")
+
+                val docRef = firestoreInstance.collection(collectionPath)
+                    .document(entryId)
+                docRef.set(vitalData, SetOptions.merge()).await()
+                true
+            },
+            operationName = "Upload health vital",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload Digital Wellbeing snapshot.
+     */
+    suspend fun uploadDigitalWellbeing(
+        userEmail: String,
+        deviceId: String,
+        wellbeingData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+                val snapshotId = wellbeingData["snapshotId"] as? String ?: return@safeFirestoreOperation false
+                val collectionPath = getCollectionPath(userEmail, deviceId, "digital_wellbeing")
+
+                val docRef = firestoreInstance.collection(collectionPath)
+                    .document(snapshotId)
+                docRef.set(wellbeingData, SetOptions.merge()).await()
+                true
+            },
+            operationName = "Upload digital wellbeing",
+            defaultValue = false
+        )
+    }
+
+    /**
      * Upload system events like boot or shutdown
      */
     suspend fun uploadSystemEvent(

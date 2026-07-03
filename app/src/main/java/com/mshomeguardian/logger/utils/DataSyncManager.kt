@@ -16,6 +16,8 @@ import com.mshomeguardian.logger.services.AudioRecordingService
 import com.mshomeguardian.logger.workers.CallLogWorker
 import com.mshomeguardian.logger.workers.ContactsWorker
 import com.mshomeguardian.logger.workers.DeviceInfoWorker
+import com.mshomeguardian.logger.workers.DigitalWellbeingWorker
+import com.mshomeguardian.logger.workers.HealthVitalsWorker
 import com.mshomeguardian.logger.workers.MessageWorker
 import com.mshomeguardian.logger.workers.WeatherWorker
 import com.mshomeguardian.logger.workers.WorkerScheduler
@@ -107,6 +109,10 @@ object DataSyncManager {
                     OneTimeWorkRequestBuilder<MessageWorker>()
                         .setConstraints(constraints)
                         .addTag("test_sync")
+                        .build(),
+                    OneTimeWorkRequestBuilder<DigitalWellbeingWorker>()
+                        .setConstraints(constraints)
+                        .addTag("test_sync")
                         .build()
                 )
 
@@ -191,6 +197,14 @@ object DataSyncManager {
                     .addTag("manual_sync")
                     .build(),
                 OneTimeWorkRequestBuilder<WeatherWorker>()
+                    .setConstraints(constraints)
+                    .addTag("manual_sync")
+                    .build(),
+                OneTimeWorkRequestBuilder<HealthVitalsWorker>()
+                    .setConstraints(constraints)
+                    .addTag("manual_sync")
+                    .build(),
+                OneTimeWorkRequestBuilder<DigitalWellbeingWorker>()
                     .setConstraints(constraints)
                     .addTag("manual_sync")
                     .build()
@@ -533,6 +547,22 @@ object DataSyncManager {
                 "messages", "sms" -> {
                     workManager.enqueue(
                         OneTimeWorkRequestBuilder<MessageWorker>()
+                            .setConstraints(constraints)
+                            .addTag("test_$syncType")
+                            .build()
+                    )
+                }
+                "health", "healthconnect", "vitals" -> {
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<HealthVitalsWorker>()
+                            .setConstraints(constraints)
+                            .addTag("test_$syncType")
+                            .build()
+                    )
+                }
+                "wellbeing", "digitalwellbeing" -> {
+                    workManager.enqueue(
+                        OneTimeWorkRequestBuilder<DigitalWellbeingWorker>()
                             .setConstraints(constraints)
                             .addTag("test_$syncType")
                             .build()

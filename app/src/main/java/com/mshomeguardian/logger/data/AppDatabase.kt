@@ -15,9 +15,11 @@ import com.mshomeguardian.logger.utils.OptimizedLogger
         MessageEntity::class,
         DeviceInfoEntity::class,
         AudioRecordingEntity::class,
-        NetworkUsageEntity::class
+        NetworkUsageEntity::class,
+        HealthVitalEntity::class,
+        DigitalWellbeingEntity::class
     ],
-    version = 10, // Incremented to include timezone in device info
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,6 +30,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun deviceInfoDao(): DeviceInfoDao
     abstract fun audioRecordingDao(): AudioRecordingDao
     abstract fun networkUsageDao(): NetworkUsageDao
+    abstract fun healthVitalDao(): HealthVitalDao
+    abstract fun digitalWellbeingDao(): DigitalWellbeingDao
 
     companion object {
         private const val TAG = "AppDatabase"
@@ -60,7 +64,8 @@ abstract class AppDatabase : RoomDatabase() {
             )
                 .addMigrations(
                     MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9
+                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                    MIGRATION_9_10, MIGRATION_10_11
                 )
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .enableMultiInstanceInvalidation()
@@ -111,7 +116,9 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_messages_timestamp_uploaded ON message_logs(timestamp, uploadedToCloud)",
                     "CREATE INDEX IF NOT EXISTS index_audio_uploaded_status ON audio_recordings(uploadedToCloud, transcriptionStatus)",
                     "CREATE INDEX IF NOT EXISTS index_network_usage_uploaded ON network_usage(uploadedToCloud)",
-                    "CREATE INDEX IF NOT EXISTS index_location_timestamp ON location_table(timestamp)"
+                    "CREATE INDEX IF NOT EXISTS index_location_timestamp ON location_table(timestamp)",
+                    "CREATE INDEX IF NOT EXISTS index_health_vitals_upload_recorded ON health_vitals(uploadedToCloud, recordedAt)",
+                    "CREATE INDEX IF NOT EXISTS index_digital_wellbeing_upload_interval ON digital_wellbeing(uploadedToCloud, intervalEnd)"
                 )
 
                 indices.forEach { sql ->
@@ -132,7 +139,15 @@ abstract class AppDatabase : RoomDatabase() {
          */
         private fun verifyDatabaseHealth(db: SupportSQLiteDatabase) {
             try {
-                val tables = listOf("call_logs", "message_logs", "location_table", "audio_recordings", "device_info")
+                val tables = listOf(
+                    "call_logs",
+                    "message_logs",
+                    "location_table",
+                    "audio_recordings",
+                    "device_info",
+                    "health_vitals",
+                    "digital_wellbeing"
+                )
 
                 tables.forEach { tableName ->
                     db.query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='$tableName'").use { cursor ->
@@ -243,12 +258,9 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 try {
                     OptimizedLogger.d(TAG, "Starting migration 8->9 - Complete schema reset")
-
-                    // Drop and recreate all problematic tables
                     database.execSQL("DROP TABLE IF EXISTS call_logs")
-
-                    // Create call_logs table with correct schema
-                    database.execSQL("""
+                    database.execSQL(
+                        """
                         CREATE TABLE call_logs (
                             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                             callId TEXT NOT NULL,
@@ -275,19 +287,80 @@ abstract class AppDatabase : RoomDatabase() {
                             viaNumber TEXT,
                             deviceId TEXT NOT NULL
                         )
-                    """)
-
-                    // Create all required indices
+                        """
+                    )
                     database.execSQL("CREATE UNIQUE INDEX index_call_logs_callId ON call_logs(callId)")
                     database.execSQL("CREATE INDEX index_call_logs_phoneNumber ON call_logs(phoneNumber)")
                     database.execSQL("CREATE INDEX index_call_logs_timestamp ON call_logs(timestamp)")
-
-                    // Create additional performance indices
                     createOptimizedIndices(database)
-
                     OptimizedLogger.d(TAG, "Migration 8->9 completed successfully")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Migration 8->9 failed", e)
+                    throw e
+                }
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                try {
+                    database.execSQL("ALTER TABLE device_info ADD COLUMN timezone TEXT")
+                } catch (e: Exception) {
+                    OptimizedLogger.d(TAG, "Timezone column already exists or cannot be added safely")
+                }
+                createOptimizedIndices(database)
+                OptimizedLogger.d(TAG, "Migration 9->10 completed")
+            }
+        }
+
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                try {
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS health_vitals (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            entryId TEXT NOT NULL,
+                            recordType TEXT NOT NULL,
+                            metricName TEXT NOT NULL,
+                            metricValue REAL NOT NULL,
+                            unit TEXT NOT NULL,
+                            recordedAt INTEGER NOT NULL,
+                            sourcePackage TEXT,
+                            deviceId TEXT NOT NULL,
+                            uploadedToCloud INTEGER NOT NULL DEFAULT 0,
+                            uploadTimestamp INTEGER
+                        )
+                        """
+                    )
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_health_vitals_entryId ON health_vitals(entryId)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_health_vitals_upload_recorded ON health_vitals(uploadedToCloud, recordedAt)")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS digital_wellbeing (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            snapshotId TEXT NOT NULL,
+                            intervalStart INTEGER NOT NULL,
+                            intervalEnd INTEGER NOT NULL,
+                            totalScreenTimeMs INTEGER NOT NULL,
+                            appLaunchCount INTEGER NOT NULL,
+                            unlockCount INTEGER NOT NULL,
+                            notificationInterruptions INTEGER NOT NULL,
+                            uniqueAppsUsed INTEGER NOT NULL,
+                            topAppPackage TEXT,
+                            topAppScreenTimeMs INTEGER NOT NULL,
+                            deviceId TEXT NOT NULL,
+                            uploadedToCloud INTEGER NOT NULL DEFAULT 0,
+                            uploadTimestamp INTEGER
+                        )
+                        """
+                    )
+                    database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_digital_wellbeing_snapshotId ON digital_wellbeing(snapshotId)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_digital_wellbeing_upload_interval ON digital_wellbeing(uploadedToCloud, intervalEnd)")
+                    createOptimizedIndices(database)
+                    OptimizedLogger.d(TAG, "Migration 10->11 completed")
+                } catch (e: Exception) {
+                    OptimizedLogger.e(TAG, "Migration 10->11 failed", e)
                     throw e
                 }
             }

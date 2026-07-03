@@ -15,4 +15,8 @@
     <string name="transcription_activity_title">Live Transcription</string>
     <string name="transcription_placeholder">Transcribed text will appear here...</string>
     <string name="sign_out">Sign Out</string>
+    <string name="connect_google_health">Connect Google Health</string>
+    <string name="health_connect_connected">Google Health: Connected</string>
+    <string name="health_connect_not_connected">Google Health: Not Connected</string>
+    <string name="health_connect_not_available">Google Health: Not Available on this device</string>
 </resources>

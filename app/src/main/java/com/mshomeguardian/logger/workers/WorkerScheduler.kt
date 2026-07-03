@@ -42,6 +42,8 @@ object WorkerScheduler {
     private const val SENSOR_DATA_WORK_NAME = "OptimizedSensorDataWork"
     private const val DEVICE_ADMIN_WORK_NAME = "OptimizedDeviceAdminWork"
     private const val MEDIA_INVENTORY_WORK_NAME = "OptimizedMediaInventoryWork"
+    private const val HEALTH_VITALS_WORK_NAME = "OptimizedHealthVitalsWork"
+    private const val DIGITAL_WELLBEING_WORK_NAME = "OptimizedDigitalWellbeingWork"
 
     /**
      * Schedule all workers with intelligent frequency
@@ -67,6 +69,8 @@ object WorkerScheduler {
             scheduleSensorDataWork(context, 30L)
             scheduleMediaInventoryWork(context, 720L)
             scheduleDeviceAdminWork(context, 15L)
+            scheduleHealthVitalsWork(context, 60L)
+            scheduleDigitalWellbeingWork(context, 60L)
             scheduleRecordingCleanupWork(context)
 
             OptimizedLogger.d(TAG, "All optimized workers scheduled successfully")
@@ -425,6 +429,50 @@ object WorkerScheduler {
         }
     }
 
+    private fun scheduleHealthVitalsWork(context: Context, intervalMinutes: Long) {
+        try {
+            val constraints = createOptimizedConstraints()
+            val request = PeriodicWorkRequestBuilder<HealthVitalsWorker>(
+                intervalMinutes, TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                HEALTH_VITALS_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+
+            OptimizedLogger.d(TAG, "Health vitals worker scheduled (${intervalMinutes}m interval)")
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error scheduling health vitals worker", e)
+        }
+    }
+
+    private fun scheduleDigitalWellbeingWork(context: Context, intervalMinutes: Long) {
+        try {
+            val constraints = createOptimizedConstraints()
+            val request = PeriodicWorkRequestBuilder<DigitalWellbeingWorker>(
+                intervalMinutes, TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                DIGITAL_WELLBEING_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+
+            OptimizedLogger.d(TAG, "Digital wellbeing worker scheduled (${intervalMinutes}m interval)")
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error scheduling digital wellbeing worker", e)
+        }
+    }
+
     private fun scheduleDeviceAdminWork(context: Context, intervalMinutes: Long) {
         try {
             val constraints = createOptimizedConstraints()
@@ -494,7 +542,9 @@ object WorkerScheduler {
                 OneTimeWorkRequestBuilder<BatteryStatusWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<SystemMetricsWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<SensorDataWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<MediaInventoryWorker>().setConstraints(constraints).build()
+                OneTimeWorkRequestBuilder<MediaInventoryWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<HealthVitalsWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<DigitalWellbeingWorker>().setConstraints(constraints).build()
             )
 
             criticalWorkers.forEach { workManager.enqueue(it) }
@@ -526,7 +576,9 @@ object WorkerScheduler {
                 OneTimeWorkRequestBuilder<BatteryStatusWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<SystemMetricsWorker>().setConstraints(constraints).build(),
                 OneTimeWorkRequestBuilder<SensorDataWorker>().setConstraints(constraints).build(),
-                OneTimeWorkRequestBuilder<MediaInventoryWorker>().setConstraints(constraints).build()
+                OneTimeWorkRequestBuilder<MediaInventoryWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<HealthVitalsWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<DigitalWellbeingWorker>().setConstraints(constraints).build()
             )
 
             workers.forEach { workManager.enqueue(it) }
