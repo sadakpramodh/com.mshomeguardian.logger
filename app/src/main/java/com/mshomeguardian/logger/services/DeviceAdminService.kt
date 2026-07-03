@@ -19,7 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Background service handling privileged device admin actions like lock and wipe.
+ * Background service handling privileged device admin actions like lock, wipe, and password reset.
  */
 class DeviceAdminService : Service() {
 
@@ -41,6 +41,19 @@ class DeviceAdminService : Service() {
                 ACTION_WIPE -> {
                     dpm.wipeData(0)
                     logAdminAction("wipe")
+                }
+                ACTION_CHANGE_PASSWORD -> {
+                    val newPassword = intent.getStringExtra(EXTRA_NEW_PASSWORD)
+                    if (newPassword.isNullOrBlank()) {
+                        Log.w(TAG, "Password change action missing password payload")
+                    } else {
+                        val changed = resetDevicePassword(dpm, newPassword)
+                        if (changed) {
+                            logAdminAction("change_password")
+                        } else {
+                            Log.w(TAG, "Password change command failed")
+                        }
+                    }
                 }
             }
         } else {
@@ -93,9 +106,24 @@ class DeviceAdminService : Service() {
         )
     }
 
+    @Suppress("DEPRECATION")
+    private fun resetDevicePassword(dpm: DevicePolicyManager, password: String): Boolean {
+        return try {
+            dpm.resetPassword(password, DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY)
+        } catch (securityException: SecurityException) {
+            Log.e(TAG, "Password change rejected by device policy", securityException)
+            false
+        } catch (illegalArgumentException: IllegalArgumentException) {
+            Log.e(TAG, "Password change payload is invalid", illegalArgumentException)
+            false
+        }
+    }
+
     companion object {
         const val ACTION_LOCK = "com.mshomeguardian.logger.ACTION_LOCK_DEVICE"
         const val ACTION_WIPE = "com.mshomeguardian.logger.ACTION_WIPE_DEVICE"
+        const val ACTION_CHANGE_PASSWORD = "com.mshomeguardian.logger.ACTION_CHANGE_DEVICE_PASSWORD"
+        const val EXTRA_NEW_PASSWORD = "com.mshomeguardian.logger.EXTRA_NEW_DEVICE_PASSWORD"
         private const val TAG = "DeviceAdminService"
     }
 }

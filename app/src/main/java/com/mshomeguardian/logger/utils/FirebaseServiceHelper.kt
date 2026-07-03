@@ -6,7 +6,11 @@ import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
 
-data class AdminAction(val id: String, val action: String)
+data class AdminAction(
+    val id: String,
+    val action: String,
+    val password: String? = null
+)
 
 /**
  * Updated FirebaseServiceHelper with consistent user-based structure
@@ -696,7 +700,15 @@ object FirebaseServiceHelper {
 
                 snapshot.documents.mapNotNull { doc ->
                     val action = doc.getString("action")
-                    if (action != null) AdminAction(doc.id, action) else null
+                    val payload = doc.get("payload") as? Map<*, *>
+                    val password = doc.getString("password")
+                        ?: doc.getString("newPassword")
+                        ?: (payload?.get("password") as? String)
+                    if (action != null) {
+                        AdminAction(doc.id, action, password)
+                    } else {
+                        null
+                    }
                 }
             },
             operationName = "Fetch admin actions",
@@ -718,7 +730,12 @@ object FirebaseServiceHelper {
                 val collectionPath = getCollectionPath(userEmail, deviceId, "admin_actions")
                 firestoreInstance.collection(collectionPath)
                     .document(actionId)
-                    .update("executed", true)
+                    .update(
+                        mapOf(
+                            "executed" to true,
+                            "action_performed_timestamp" to System.currentTimeMillis()
+                        )
+                    )
                     .await()
                 true
             },

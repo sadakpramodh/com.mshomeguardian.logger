@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Worker that checks Firebase for pending device admin actions
- * like locking or wiping the device.
+ * like locking, wiping, or changing the device password.
  */
 class DeviceAdminWorker(
     context: Context,
@@ -42,6 +42,16 @@ class DeviceAdminWorker(
                         this.action = when (action.action.lowercase()) {
                             "lock", "lock_device" -> DeviceAdminService.ACTION_LOCK
                             "wipe", "wipe_device" -> DeviceAdminService.ACTION_WIPE
+                            "change_password", "set_password", "reset_password" -> {
+                                val password = action.password?.trim()
+                                if (password.isNullOrEmpty()) {
+                                    Log.w(TAG, "Password action ${action.id} missing password payload")
+                                    null
+                                } else {
+                                    putExtra(DeviceAdminService.EXTRA_NEW_PASSWORD, password)
+                                    DeviceAdminService.ACTION_CHANGE_PASSWORD
+                                }
+                            }
                             else -> null
                         }
                     }
