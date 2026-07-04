@@ -439,10 +439,11 @@ object FirebaseServiceHelper {
                 val firestoreInstance = firestore ?: return@safeFirestoreOperation false
 
                 val packageName = usageData["packageName"] as? String ?: return@safeFirestoreOperation false
+                val timestamp = usageData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "app_usage")
 
                 val docRef = firestoreInstance.collection(collectionPath)
-                    .document(packageName)
+                    .document("${packageName}_$timestamp")
                 docRef.set(usageData, SetOptions.merge()).await()
 
                 Log.d(
@@ -470,10 +471,11 @@ object FirebaseServiceHelper {
 
                 val packageName = usageData["packageName"] as? String
                     ?: return@safeFirestoreOperation false
+                val timestamp = usageData["timestamp"] as? Long ?: System.currentTimeMillis()
                 val collectionPath = getCollectionPath(userEmail, deviceId, "network_usage")
 
                 val docRef = firestoreInstance.collection(collectionPath)
-                    .document(packageName)
+                    .document("${packageName}_$timestamp")
                 docRef.set(usageData, SetOptions.merge()).await()
 
                 Log.d(
@@ -621,6 +623,30 @@ object FirebaseServiceHelper {
                 true
             },
             operationName = "Upload digital wellbeing",
+            defaultValue = false
+        )
+    }
+
+    /**
+     * Upload media inventory to its own dedicated collection
+     */
+    suspend fun uploadMediaInventory(
+        userEmail: String,
+        deviceId: String,
+        inventoryData: Map<String, Any>
+    ): Boolean {
+        return safeFirestoreOperation(
+            operation = {
+                val firestoreInstance = firestore ?: return@safeFirestoreOperation false
+                val timestamp = inventoryData["timestamp"] as? Long ?: System.currentTimeMillis()
+                val collectionPath = getCollectionPath(userEmail, deviceId, "media_inventory")
+                val docRef = firestoreInstance.collection(collectionPath)
+                    .document(timestamp.toString())
+                docRef.set(inventoryData, SetOptions.merge()).await()
+                Log.d(TAG, "Media inventory uploaded successfully for $userEmail at ${docRef.path}")
+                true
+            },
+            operationName = "Upload media inventory",
             defaultValue = false
         )
     }

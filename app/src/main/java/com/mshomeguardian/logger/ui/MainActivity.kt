@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var healthConnectStatusText: TextView
 
     private val healthConnectPermissionsLauncher = registerForActivityResult(
-        PermissionController.createRequestPermissionResultContract(HealthConnectHelper.PROVIDER_PACKAGE_NAME)
+        PermissionController.createRequestPermissionResultContract()
     ) { _ ->
         lifecycleScope.launch {
             val grantedPermissions = HealthConnectHelper.getGrantedPermissions(this@MainActivity)

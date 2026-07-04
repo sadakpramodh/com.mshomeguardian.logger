@@ -6,10 +6,20 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "location_table",
-    indices = [Index(value = ["timestamp"], name = "index_location_timestamp")]
+    indices = [
+        Index(value = ["timestamp"], name = "index_location_timestamp"),
+        Index(value = ["uploadedToCloud"], name = "index_location_uploaded")
+    ]
 )
 data class LocationEntity(
     @PrimaryKey val timestamp: Long,
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
+    val accuracy: Float = -1f,
+    val altitude: Double = 0.0,
+    val bearing: Float = 0f,
+    val speed: Float = 0f,
+    val provider: String = "unknown",
+    val uploadedToCloud: Boolean = false,
+    val uploadTimestamp: Long? = null
 )

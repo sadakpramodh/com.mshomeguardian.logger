@@ -51,7 +51,16 @@ class LocationWorker(
                 consecutiveLocationFailures = 0
 
                 val ts = System.currentTimeMillis()
-                val entity = LocationEntity(ts, loc.latitude, loc.longitude)
+                val entity = LocationEntity(
+                    timestamp = ts,
+                    latitude = loc.latitude,
+                    longitude = loc.longitude,
+                    accuracy = loc.accuracy,
+                    altitude = loc.altitude,
+                    bearing = loc.bearing,
+                    speed = loc.speed,
+                    provider = loc.provider ?: "unknown"
+                )
 
                 Log.d(TAG, "New location captured: lat=${loc.latitude}, lng=${loc.longitude}")
 
@@ -138,7 +147,11 @@ class LocationWorker(
 
             if (loc != null) {
                 val ts = System.currentTimeMillis()
-                val entity = LocationEntity(ts, loc.latitude, loc.longitude)
+                val entity = LocationEntity(
+                    timestamp = ts,
+                    latitude = loc.latitude,
+                    longitude = loc.longitude
+                )
 
                 // Save to local database only
                 db.locationDao().insertLocation(entity)

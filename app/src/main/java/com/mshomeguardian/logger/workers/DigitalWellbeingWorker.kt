@@ -74,6 +74,9 @@ class DigitalWellbeingWorker(
                     }
 
                     UsageEvents.Event.KEYGUARD_HIDDEN -> unlockCount++
+
+                    // NOTIFICATION_SEEN = 10, added in API 26
+                    10 -> notificationInterruptions++
                 }
             }
 

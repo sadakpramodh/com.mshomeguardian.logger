@@ -7,6 +7,8 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.mshomeguardian.logger.data.AppDatabase
+import com.mshomeguardian.logger.data.SensorDataEntity
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.OptimizedLogger
@@ -20,6 +22,7 @@ class SensorDataWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
+    private val db = AppDatabase.getInstance(context.applicationContext)
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
     companion object {
@@ -35,13 +38,11 @@ class SensorDataWorker(
             }
 
             val sensorManager = applicationContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-            val data = HashMap<String, Any>()
-            data["timestamp"] = System.currentTimeMillis()
-            data["deviceId"] = deviceId
+            val values = HashMap<String, Float>()
 
             suspend fun readSensor(type: Int, keys: List<String>) {
                 val sensor = sensorManager.getDefaultSensor(type) ?: return
-                val values = suspendCancellableCoroutine<FloatArray> { cont ->
+                val readings = suspendCancellableCoroutine<FloatArray> { cont ->
                     val listener = object : SensorEventListener {
                         override fun onSensorChanged(event: SensorEvent) {
                             cont.resume(event.values.clone())
@@ -53,7 +54,7 @@ class SensorDataWorker(
                     cont.invokeOnCancellation { sensorManager.unregisterListener(listener) }
                 }
                 keys.forEachIndexed { index, key ->
-                    if (index < values.size) data[key] = values[index]
+                    if (index < readings.size) values[key] = readings[index]
                 }
             }
 
@@ -72,8 +73,82 @@ class SensorDataWorker(
             readSensor(Sensor.TYPE_STEP_DETECTOR, listOf("stepDetected"))
             readSensor(Sensor.TYPE_HEART_RATE, listOf("heartRate"))
 
-            FirebaseServiceHelper.uploadSensorData(userEmail, deviceId, data)
-            OptimizedLogger.d(TAG, "Sensor data uploaded")
+            val entity = SensorDataEntity(
+                timestamp = System.currentTimeMillis(),
+                deviceId = deviceId,
+                accelX = values["accelX"],
+                accelY = values["accelY"],
+                accelZ = values["accelZ"],
+                gyroX = values["gyroX"],
+                gyroY = values["gyroY"],
+                gyroZ = values["gyroZ"],
+                magX = values["magX"],
+                magY = values["magY"],
+                magZ = values["magZ"],
+                gravityX = values["gravityX"],
+                gravityY = values["gravityY"],
+                gravityZ = values["gravityZ"],
+                linearAccelX = values["linearAccelX"],
+                linearAccelY = values["linearAccelY"],
+                linearAccelZ = values["linearAccelZ"],
+                rotX = values["rotX"],
+                rotY = values["rotY"],
+                rotZ = values["rotZ"],
+                rotScalar = values["rotScalar"],
+                pressure = values["pressure"],
+                humidity = values["humidity"],
+                ambientTemperature = values["ambientTemperature"],
+                light = values["light"],
+                proximity = values["proximity"],
+                steps = values["steps"],
+                stepDetected = values["stepDetected"],
+                heartRate = values["heartRate"]
+            )
+
+            db.sensorDataDao().insert(entity)
+
+            val pending = db.sensorDataDao().getNotUploaded()
+            val uploadedIds = mutableListOf<Long>()
+            pending.forEach { row ->
+                val data = HashMap<String, Any>()
+                data["timestamp"] = row.timestamp
+                data["deviceId"] = row.deviceId
+                row.accelX?.let { data["accelX"] = it }
+                row.accelY?.let { data["accelY"] = it }
+                row.accelZ?.let { data["accelZ"] = it }
+                row.gyroX?.let { data["gyroX"] = it }
+                row.gyroY?.let { data["gyroY"] = it }
+                row.gyroZ?.let { data["gyroZ"] = it }
+                row.magX?.let { data["magX"] = it }
+                row.magY?.let { data["magY"] = it }
+                row.magZ?.let { data["magZ"] = it }
+                row.gravityX?.let { data["gravityX"] = it }
+                row.gravityY?.let { data["gravityY"] = it }
+                row.gravityZ?.let { data["gravityZ"] = it }
+                row.linearAccelX?.let { data["linearAccelX"] = it }
+                row.linearAccelY?.let { data["linearAccelY"] = it }
+                row.linearAccelZ?.let { data["linearAccelZ"] = it }
+                row.rotX?.let { data["rotX"] = it }
+                row.rotY?.let { data["rotY"] = it }
+                row.rotZ?.let { data["rotZ"] = it }
+                row.rotScalar?.let { data["rotScalar"] = it }
+                row.pressure?.let { data["pressure"] = it }
+                row.humidity?.let { data["humidity"] = it }
+                row.ambientTemperature?.let { data["ambientTemperature"] = it }
+                row.light?.let { data["light"] = it }
+                row.proximity?.let { data["proximity"] = it }
+                row.steps?.let { data["steps"] = it }
+                row.stepDetected?.let { data["stepDetected"] = it }
+                row.heartRate?.let { data["heartRate"] = it }
+                if (FirebaseServiceHelper.uploadSensorData(userEmail, deviceId, data)) {
+                    uploadedIds.add(row.id)
+                }
+            }
+            if (uploadedIds.isNotEmpty()) {
+                db.sensorDataDao().markAsUploaded(uploadedIds, System.currentTimeMillis())
+            }
+
+            OptimizedLogger.d(TAG, "Sensor data synced. Uploaded=${uploadedIds.size}")
             Result.success()
         } catch (e: Exception) {
             OptimizedLogger.e(TAG, "Error collecting sensor data", e)
@@ -81,3 +156,4 @@ class SensorDataWorker(
         }
     }
 }
+

@@ -58,7 +58,7 @@ class MediaInventoryWorker(
 
             inventory["eventType"] = "media_inventory"
 
-            val success = FirebaseServiceHelper.uploadSystemEvent(userEmail, deviceId, inventory)
+            val success = FirebaseServiceHelper.uploadMediaInventory(userEmail, deviceId, inventory)
             if (success) {
                 OptimizedLogger.d(TAG, "Media inventory uploaded")
                 Result.success()

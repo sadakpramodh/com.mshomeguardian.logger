@@ -8,6 +8,8 @@ import android.os.Build
 import android.os.PowerManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.mshomeguardian.logger.data.AppDatabase
+import com.mshomeguardian.logger.data.BatteryStatusEntity
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.OptimizedLogger
@@ -19,6 +21,7 @@ class BatteryStatusWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
+    private val db = AppDatabase.getInstance(context.applicationContext)
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
 
     companion object {
@@ -58,40 +61,55 @@ class BatteryStatusWorker(
             }
             val batteryManager = applicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
             val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-            val batteryPropertyCapacity = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-            } else {
-                -1
-            }
-            val chargeCounter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
-            } else {
-                -1
-            }
-            val currentNow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-            } else {
-                -1
-            }
+            val capacityPercent = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            val chargeCounter = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+            val currentNow = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
 
-            val data = hashMapOf<String, Any>(
-                "level" to pct,
-                "isCharging" to charging,
-                "chargingSource" to chargingSource,
-                "health" to health,
-                "temperature" to temperature,
-                "voltage" to voltage,
-                "present" to present,
-                "capacityPercent" to batteryPropertyCapacity,
-                "chargeCounter" to chargeCounter,
-                "currentNow" to currentNow,
-                "powerSaveMode" to powerManager.isPowerSaveMode,
-                "timestamp" to System.currentTimeMillis(),
-                "deviceId" to deviceId
+            val entity = BatteryStatusEntity(
+                level = pct,
+                isCharging = charging,
+                chargingSource = chargingSource,
+                health = health,
+                temperature = temperature,
+                voltage = voltage,
+                present = present,
+                capacityPercent = capacityPercent,
+                chargeCounter = chargeCounter,
+                currentNow = currentNow,
+                powerSaveMode = powerManager.isPowerSaveMode,
+                timestamp = System.currentTimeMillis(),
+                deviceId = deviceId
             )
 
-            FirebaseServiceHelper.uploadBatteryStatus(userEmail, deviceId, data)
-            OptimizedLogger.d(TAG, "Battery status uploaded")
+            db.batteryStatusDao().insert(entity)
+
+            val pending = db.batteryStatusDao().getNotUploaded()
+            val uploadedIds = mutableListOf<Long>()
+            pending.forEach { row ->
+                val data = hashMapOf<String, Any>(
+                    "level" to row.level,
+                    "isCharging" to row.isCharging,
+                    "chargingSource" to row.chargingSource,
+                    "health" to row.health,
+                    "temperature" to row.temperature,
+                    "voltage" to row.voltage,
+                    "present" to row.present,
+                    "capacityPercent" to row.capacityPercent,
+                    "chargeCounter" to row.chargeCounter,
+                    "currentNow" to row.currentNow,
+                    "powerSaveMode" to row.powerSaveMode,
+                    "timestamp" to row.timestamp,
+                    "deviceId" to row.deviceId
+                )
+                if (FirebaseServiceHelper.uploadBatteryStatus(userEmail, deviceId, data)) {
+                    uploadedIds.add(row.id)
+                }
+            }
+            if (uploadedIds.isNotEmpty()) {
+                db.batteryStatusDao().markAsUploaded(uploadedIds, System.currentTimeMillis())
+            }
+
+            OptimizedLogger.d(TAG, "Battery status synced. Uploaded=${uploadedIds.size}")
             Result.success()
         } catch (e: Exception) {
             OptimizedLogger.e(TAG, "Error collecting battery status", e)

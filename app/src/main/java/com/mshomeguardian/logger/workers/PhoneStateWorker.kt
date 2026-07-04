@@ -8,12 +8,9 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.HashMap
 
@@ -23,13 +20,6 @@ class PhoneStateWorker(
 ) : CoroutineWorker(context, params) {
 
     private val deviceId = DeviceIdentifier.getPersistentDeviceId(context.applicationContext)
-
-    private val firestore: FirebaseFirestore? = try {
-        FirebaseFirestore.getInstance()
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firestore", e)
-        null
-    }
 
     companion object {
         private const val TAG = "PhoneStateWorker"
