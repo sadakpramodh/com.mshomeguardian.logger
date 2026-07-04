@@ -130,6 +130,18 @@ object WorkerScheduler {
             .build()
     }
 
+    /**
+     * Create constraints for data-collection workers that must run regardless of battery level.
+     * Used for BatteryStatusWorker and SensorDataWorker where low-battery readings are valuable.
+     */
+    private fun createDataCollectionConstraints(): Constraints {
+        return Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiresBatteryNotLow(false)
+            .setRequiresDeviceIdle(false)
+            .build()
+    }
+
     private fun scheduleLocationWork(context: Context, intervalMinutes: Long) {
         try {
             val constraints = createOptimizedConstraints()
@@ -339,7 +351,8 @@ object WorkerScheduler {
 
     private fun scheduleBatteryStatusWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = createOptimizedConstraints()
+            // Use data-collection constraints — must run even when battery is low
+            val constraints = createDataCollectionConstraints()
 
             val request = PeriodicWorkRequestBuilder<BatteryStatusWorker>(
                 intervalMinutes, TimeUnit.MINUTES
@@ -385,7 +398,8 @@ object WorkerScheduler {
 
     private fun scheduleSensorDataWork(context: Context, intervalMinutes: Long) {
         try {
-            val constraints = createOptimizedConstraints()
+            // Use data-collection constraints — sensors should be readable at any battery level
+            val constraints = createDataCollectionConstraints()
 
             val request = PeriodicWorkRequestBuilder<SensorDataWorker>(
                 intervalMinutes, TimeUnit.MINUTES

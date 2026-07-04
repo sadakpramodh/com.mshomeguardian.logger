@@ -159,15 +159,7 @@
             android:foregroundServiceType="location"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- Recording service with proper foreground service type -->
-        <service
-            android:name=".services.RecordingService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="microphone"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
-
-        <!-- Monitoring service with combined types -->
+        <!-- Monitoring service with combined foreground service types -->
         <service
             android:name=".services.MonitoringService"
             android:enabled="true"

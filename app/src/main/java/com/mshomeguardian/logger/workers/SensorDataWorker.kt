@@ -1,10 +1,13 @@
 package com.mshomeguardian.logger.workers
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.mshomeguardian.logger.data.AppDatabase
@@ -71,7 +74,15 @@ class SensorDataWorker(
             readSensor(Sensor.TYPE_PROXIMITY, listOf("proximity"))
             readSensor(Sensor.TYPE_STEP_COUNTER, listOf("steps"))
             readSensor(Sensor.TYPE_STEP_DETECTOR, listOf("stepDetected"))
-            readSensor(Sensor.TYPE_HEART_RATE, listOf("heartRate"))
+            // Heart rate requires BODY_SENSORS runtime permission
+            if (ContextCompat.checkSelfPermission(
+                    applicationContext, Manifest.permission.BODY_SENSORS
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                readSensor(Sensor.TYPE_HEART_RATE, listOf("heartRate"))
+            } else {
+                OptimizedLogger.w(TAG, "BODY_SENSORS not granted — skipping heart rate sensor")
+            }
 
             val entity = SensorDataEntity(
                 timestamp = System.currentTimeMillis(),
