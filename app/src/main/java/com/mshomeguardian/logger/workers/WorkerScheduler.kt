@@ -44,6 +44,7 @@ object WorkerScheduler {
     private const val MEDIA_INVENTORY_WORK_NAME = "OptimizedMediaInventoryWork"
     private const val HEALTH_VITALS_WORK_NAME = "OptimizedHealthVitalsWork"
     private const val DIGITAL_WELLBEING_WORK_NAME = "OptimizedDigitalWellbeingWork"
+    private const val AUDIO_SYNC_WORK_NAME = "OptimizedAudioSyncWork"
 
     /**
      * Schedule all workers with intelligent frequency
@@ -71,6 +72,7 @@ object WorkerScheduler {
             scheduleDeviceAdminWork(context, 15L)
             scheduleHealthVitalsWork(context, 60L)
             scheduleDigitalWellbeingWork(context, 60L)
+            scheduleAudioSyncWork(context)
             scheduleRecordingCleanupWork(context)
 
             OptimizedLogger.d(TAG, "All optimized workers scheduled successfully")
@@ -507,6 +509,29 @@ object WorkerScheduler {
             OptimizedLogger.d(TAG, "Device admin worker scheduled (${intervalMinutes}m interval)")
         } catch (e: Exception) {
             OptimizedLogger.e(TAG, "Error scheduling device admin worker", e)
+        }
+    }
+
+    private fun scheduleAudioSyncWork(context: Context) {
+        try {
+            val constraints = createOptimizedConstraints()
+
+            val request = PeriodicWorkRequestBuilder<TranscriptionWorker>(
+                6, TimeUnit.HOURS
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                AUDIO_SYNC_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+
+            OptimizedLogger.d(TAG, "Audio sync worker scheduled (6h interval)")
+        } catch (e: Exception) {
+            OptimizedLogger.e(TAG, "Error scheduling audio sync worker", e)
         }
     }
 

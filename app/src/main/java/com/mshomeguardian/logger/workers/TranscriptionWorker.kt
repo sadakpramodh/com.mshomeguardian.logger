@@ -1,24 +1,23 @@
 package com.mshomeguardian.logger.workers
 
 import android.content.Context
-import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
+import com.mshomeguardian.logger.data.AppDatabase
 import com.mshomeguardian.logger.utils.FirebaseServiceHelper
-import com.mshomeguardian.logger.utils.DeviceIdentifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
 
 /**
- * Simplified implementation of TranscriptionWorker that focuses on audio upload
- * rather than transcription functionality. This version removes dependencies
- * on external libraries like DeepSpeech that are causing build issues.
+ * Fallback audio sync worker. Scans Room for audio recordings with
+ * uploadedToCloud = false and re-attempts Firebase Storage + Firestore upload
+ * using the correct UUID-based recordingId stored in Room.
+ *
+ * This runs periodically as a safety net for recordings that failed to upload
+ * during AudioRecordingService runs (e.g. due to transient network issues).
  */
 class TranscriptionWorker(
     context: Context,
@@ -31,141 +30,83 @@ class TranscriptionWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            val filePath = inputData.getString("file_path")
-            val deviceId = inputData.getString("device_id") ?: DeviceIdentifier.getPersistentDeviceId(applicationContext)
+            val userEmail = FirebaseServiceHelper.getCurrentUserEmail()
+                ?: return@withContext Result.success() // not signed in, skip silently
 
-            if (filePath == null) {
-                Log.e(TAG, "No file path provided")
-                return@withContext Result.failure()
+            val db = AppDatabase.getInstance(applicationContext)
+            val pending = db.audioRecordingDao().getNotUploadedRecordings()
+
+            if (pending.isEmpty()) {
+                Log.d(TAG, "No pending audio recordings to sync")
+                return@withContext Result.success()
             }
 
-            val file = File(filePath)
-            if (!file.exists()) {
-                Log.e(TAG, "File does not exist: $filePath")
-                return@withContext Result.failure()
-            }
+            Log.d(TAG, "Found ${pending.size} unuploaded audio recordings, syncing...")
+            var failed = 0
 
-            Log.d(TAG, "Starting processing for file: ${file.name}")
+            for (recording in pending) {
+                val file = File(recording.filePath)
 
-            // Extract basic info about the audio
-            val basicInfo = createBasicInfo(file)
-
-            // Upload the audio file to Firebase Storage
-            val audioUploaded = uploadAudioFile(file, deviceId)
-
-            // Upload basic info to Firestore
-            val metadataUploaded = uploadMetadata(file.name, basicInfo, deviceId)
-
-            return@withContext if (audioUploaded && metadataUploaded) {
-                Log.d(TAG, "Audio file uploaded successfully")
-                Result.success()
-            } else {
-                Log.e(TAG, "Failed to upload audio or metadata")
-                Result.retry()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in transcription worker", e)
-            return@withContext Result.retry()
-        }
-    }
-
-    private fun createBasicInfo(audioFile: File): String {
-        try {
-            // Extract basic metadata about the audio
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(audioFile.absolutePath)
-
-            val durationString = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            val duration = durationString?.toLongOrNull() ?: 0L
-            val durationSecs = duration / 1000L
-            val minutes = durationSecs / 60
-            val seconds = durationSecs % 60
-
-            val timestamp = audioFile.name
-                .substringAfter("recording_")
-                .substringBefore(".wav")
-                .replace("_", ":")
-
-            retriever.release()
-
-            return "Audio recording from $timestamp\n" +
-                    "Duration: $minutes minutes and $seconds seconds\n" +
-                    "This recording has been securely uploaded to Firebase Storage."
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating basic info", e)
-            return "Audio file ${audioFile.name} has been uploaded to Firebase Storage. " +
-                    "Details unavailable: ${e.message}"
-        }
-    }
-
-    private suspend fun uploadMetadata(fileName: String, info: String, deviceId: String): Boolean {
-        try {
-            // Create a map of the audio metadata
-            val metadata = hashMapOf(
-                "fileName" to fileName,
-                "info" to info,
-                "deviceId" to deviceId,
-                "timestamp" to System.currentTimeMillis(),
-                "status" to "uploaded_without_transcription"
-            )
-
-            val userEmail = FirebaseServiceHelper.getCurrentUserEmail() ?: return false
-            val documentId = fileName.substringBeforeLast(".")
-
-            return withContext(Dispatchers.IO) {
-                val success = FirebaseServiceHelper.uploadAudioRecording(
-                    userEmail,
-                    deviceId,
-                    metadata + ("recordingId" to documentId)
-                )
-                if (success) {
-                    Log.d(TAG, "Audio metadata uploaded successfully")
-                } else {
-                    Log.e(TAG, "Error uploading audio metadata")
+                // File deleted locally — mark uploaded to stop retrying
+                if (!file.exists()) {
+                    db.audioRecordingDao().markRecordingAsUploaded(
+                        recording.recordingId,
+                        System.currentTimeMillis()
+                    )
+                    continue
                 }
-                success
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error preparing metadata upload", e)
-            return false
-        }
-    }
 
-    private suspend fun uploadAudioFile(audioFile: File, deviceId: String): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val userEmail = FirebaseServiceHelper.getCurrentUserEmail() ?: return@withContext false
-                val audioRef = FirebaseServiceHelper.getAudioStorageReference(
-                    userEmail,
-                    deviceId,
-                    audioFile.name
-                ) ?: return@withContext false
+                val deviceId = recording.deviceId
 
-                val uploadTask = audioRef.putFile(android.net.Uri.fromFile(audioFile))
+                // Upload audio file to Firebase Storage
+                val storageRef = FirebaseServiceHelper.getAudioStorageReference(
+                    userEmail, deviceId, recording.fileName
+                )
+                if (storageRef == null) { failed++; continue }
 
-                try {
-                    uploadTask.await()
-                    Log.d(TAG, "Audio file uploaded successfully")
+                val fileUploaded = try {
+                    storageRef.putFile(android.net.Uri.fromFile(file)).await()
                     true
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error uploading audio file", e)
-
-                    // Try with a retry
-                    try {
-                        val retryUploadTask = audioRef.putFile(android.net.Uri.fromFile(audioFile))
-                        retryUploadTask.await()
-                        Log.d(TAG, "Audio file uploaded successfully after retry")
-                        true
-                    } catch (e2: Exception) {
-                        Log.e(TAG, "Error uploading audio file even after retry", e2)
-                        false
-                    }
+                    Log.e(TAG, "Storage upload failed for ${recording.fileName}", e)
+                    false
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error setting up audio file upload", e)
-                false
+
+                if (!fileUploaded) { failed++; continue }
+
+                // Upload metadata to Firestore using the UUID recordingId from Room
+                val metadata = hashMapOf<String, Any>(
+                    "recordingId" to recording.recordingId,
+                    "fileName" to recording.fileName,
+                    "startTime" to recording.startTime,
+                    "endTime" to recording.endTime,
+                    "duration" to recording.duration,
+                    "fileSize" to recording.fileSize,
+                    "transcriptionStatus" to recording.transcriptionStatus.name,
+                    "deviceId" to deviceId,
+                    "uploadTime" to System.currentTimeMillis(),
+                    "transcription" to (recording.transcription ?: "")
+                )
+
+                val metaUploaded = FirebaseServiceHelper.uploadAudioRecording(
+                    userEmail, deviceId, metadata
+                )
+
+                if (metaUploaded) {
+                    db.audioRecordingDao().markRecordingAsUploaded(
+                        recording.recordingId,
+                        System.currentTimeMillis()
+                    )
+                    Log.d(TAG, "Audio recording synced: ${recording.recordingId}")
+                } else {
+                    failed++
+                }
             }
+
+            if (failed > 0) Result.retry() else Result.success()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in audio sync worker", e)
+            Result.retry()
         }
     }
 }
