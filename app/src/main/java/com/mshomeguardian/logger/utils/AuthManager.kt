@@ -34,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 /**
@@ -365,10 +366,12 @@ class LocationMonitoringService : Service() {
         serviceScope.launch {
             try {
                 val timestamp = System.currentTimeMillis()
+                val timezoneId = TimeZone.getDefault().id
                 val locationEntity = LocationEntity(
                     timestamp = timestamp,
                     latitude = location.latitude,
-                    longitude = location.longitude
+                    longitude = location.longitude,
+                    timezone = timezoneId
                 )
 
                 // Save to local database
@@ -410,6 +413,7 @@ class LocationMonitoringService : Service() {
                         "timestamp" to locationEntity.timestamp,
                         "latitude" to locationEntity.latitude,
                         "longitude" to locationEntity.longitude,
+                        "timezone" to locationEntity.timezone,
                         "deviceId" to deviceId,
                         "syncedAt" to System.currentTimeMillis()
                     )

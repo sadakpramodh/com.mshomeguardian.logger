@@ -298,6 +298,7 @@ class MessageWorker(
                         "isRead" to message.isRead,
                         "seen" to message.seen,
                         "deliveryStatus" to (message.deliveryStatus ?: 0),
+                        "timezone" to message.timezone,
                         "deviceId" to deviceId,
                         "uploadedAt" to System.currentTimeMillis()
                     )

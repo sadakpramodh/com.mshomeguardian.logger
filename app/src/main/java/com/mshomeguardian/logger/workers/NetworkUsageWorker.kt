@@ -101,6 +101,7 @@ class NetworkUsageWorker(
                     "rxBytes" to usage.rxBytes,
                     "txBytes" to usage.txBytes,
                     "timestamp" to usage.timestamp,
+                    "timezone" to usage.timezone,
                     "deviceId" to usage.deviceId
                 )
                 val success = FirebaseServiceHelper.uploadNetworkUsage(userEmail, deviceId, dataMap)

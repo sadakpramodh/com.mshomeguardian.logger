@@ -9,6 +9,8 @@ local.properties
 
 # Sensitive files
 keys.properties
+keystore.base64
+debug-keystore.base64
 app/google-services.json
 
 # Large models and assets
@@ -44,3 +46,6 @@ app/src/main/assets/*
 
 # Debug build outputs
 app/debug/
+
+# Release build outputs
+app/release/

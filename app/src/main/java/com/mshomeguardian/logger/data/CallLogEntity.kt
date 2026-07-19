@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
+import java.util.TimeZone
 
 /**
  * Entity representing a call log entry with comprehensive details
@@ -54,7 +55,8 @@ data class CallLogEntity(
     val features: Int? = null,            // Any additional call features
     val postDialDigits: String? = null,   // Post-dial digits
     val viaNumber: String? = null,        // Via number if any
-
+ 
     // Device Info at time of recording
+    val timezone: String = TimeZone.getDefault().id, // Device timezone ID when captured
     val deviceId: String                  // The persistent device ID
 )

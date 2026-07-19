@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.TimeZone
 
 @Entity(
     tableName = "health_vitals",
@@ -20,9 +21,9 @@ data class HealthVitalEntity(
     val metricValue: Double,
     val unit: String,
     val recordedAt: Long,
+    val timezone: String = TimeZone.getDefault().id,
     val sourcePackage: String?,
     val deviceId: String,
     val uploadedToCloud: Boolean = false,
     val uploadTimestamp: Long? = null
 )
-

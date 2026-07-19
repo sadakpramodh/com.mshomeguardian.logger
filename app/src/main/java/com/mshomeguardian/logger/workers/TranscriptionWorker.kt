@@ -83,6 +83,7 @@ class TranscriptionWorker(
                     "duration" to recording.duration,
                     "fileSize" to recording.fileSize,
                     "transcriptionStatus" to recording.transcriptionStatus.name,
+                    "timezone" to recording.timezone,
                     "deviceId" to deviceId,
                     "uploadTime" to System.currentTimeMillis(),
                     "transcription" to (recording.transcription ?: "")

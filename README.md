@@ -200,6 +200,43 @@ Home Guardian Logger is a powerful Android application designed to provide compr
 - Google Services JSON configuration file
 - Minimum 2GB RAM for Android Studio and build process
 
+### **GitHub Actions: Auto Build + Signed Release APKs**
+
+This repository now includes `.github/workflows/build-and-release-apk.yml`, which runs on every push to `main` (direct push or merge commit), builds both APK variants, and creates a GitHub Release with:
+
+- `home-guardian-debug.apk`
+- `home-guardian-release.apk` (signed with your keystore)
+
+Add these repository secrets before using the workflow.
+
+**Release signing secrets**
+
+- `ANDROID_KEYSTORE_BASE64` (base64 content of your `.jks`/`.keystore`)
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+**Debug signing secrets** (use the same debug keystore installed on your test phone, typically `~/.android/debug.keystore`)
+
+- `DEBUG_KEYSTORE_BASE64`
+- `DEBUG_KEYSTORE_PASSWORD`
+- `DEBUG_KEY_ALIAS`
+- `DEBUG_KEY_PASSWORD`
+
+Generate the base64 secret from your keystore file:
+
+```bash
+# Linux/macOS
+base64 -w 0 my-release-key.jks
+```
+
+```powershell
+# Windows PowerShell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("my-release-key.jks"))
+```
+
+Use the **same keystore and alias** you used previously for app updates. Changing keystore/alias will produce a different signing certificate and cause signature mismatch errors during upgrades.
+
 ### **Enhanced Firebase Setup**
 
 1. **Create Firebase Project**

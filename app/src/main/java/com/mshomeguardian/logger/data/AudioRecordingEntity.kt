@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.TimeZone
 
 /**
  * Entity for storing information about audio recordings and their transcriptions
@@ -43,8 +44,9 @@ data class AudioRecordingEntity(
     val deletedLocally: Boolean = false,       // If the recording was deleted on device
     val uploadedToCloud: Boolean = false,      // If this recording was uploaded to Storage
     val uploadTimestamp: Long? = null,         // When this recording was uploaded
-
+ 
     // Device Info
+    val timezone: String = TimeZone.getDefault().id, // Device timezone ID when captured
     val deviceId: String                       // The persistent device ID
 ) {
     enum class TranscriptionStatus {

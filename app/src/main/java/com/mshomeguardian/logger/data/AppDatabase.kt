@@ -21,7 +21,7 @@ import com.mshomeguardian.logger.utils.OptimizedLogger
         BatteryStatusEntity::class,
         SensorDataEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -69,7 +69,8 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(
                     MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                    MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13
+                    MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+                    MIGRATION_13_14
                 )
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .enableMultiInstanceInvalidation()
@@ -520,6 +521,26 @@ abstract class AppDatabase : RoomDatabase() {
                     OptimizedLogger.d(TAG, "Migration 12->13 completed")
                 } catch (e: Exception) {
                     OptimizedLogger.e(TAG, "Migration 12->13 failed", e)
+                    throw e
+                }
+            }
+        }
+
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                try {
+                    database.execSQL("ALTER TABLE location_table ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE call_logs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE message_logs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE audio_recordings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE network_usage ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE health_vitals ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE digital_wellbeing ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE battery_status ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    database.execSQL("ALTER TABLE sensor_data ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+                    OptimizedLogger.d(TAG, "Migration 13->14 completed")
+                } catch (e: Exception) {
+                    OptimizedLogger.e(TAG, "Migration 13->14 failed", e)
                     throw e
                 }
             }

@@ -13,6 +13,7 @@ import com.mshomeguardian.logger.utils.FirebaseServiceHelper
 import com.mshomeguardian.logger.utils.LocationUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 class LocationWorker(
@@ -51,6 +52,7 @@ class LocationWorker(
                 consecutiveLocationFailures = 0
 
                 val ts = System.currentTimeMillis()
+                val timezoneId = TimeZone.getDefault().id
                 val entity = LocationEntity(
                     timestamp = ts,
                     latitude = loc.latitude,
@@ -59,7 +61,8 @@ class LocationWorker(
                     altitude = loc.altitude,
                     bearing = loc.bearing,
                     speed = loc.speed,
-                    provider = loc.provider ?: "unknown"
+                    provider = loc.provider ?: "unknown",
+                    timezone = timezoneId
                 )
 
                 Log.d(TAG, "New location captured: lat=${loc.latitude}, lng=${loc.longitude}")
@@ -87,6 +90,7 @@ class LocationWorker(
                         "speedAccuracy" to if (loc.hasSpeedAccuracy()) loc.speedAccuracyMetersPerSecond.toDouble() else -1.0,
                         "bearingAccuracy" to if (loc.hasBearingAccuracy()) loc.bearingAccuracyDegrees.toDouble() else -1.0,
                         "elapsedRealtimeNanos" to loc.elapsedRealtimeNanos,
+                        "timezone" to timezoneId,
                         "deviceId" to deviceId,
                         "provider" to (loc.provider ?: "unknown"),
                         "syncedAt" to System.currentTimeMillis()

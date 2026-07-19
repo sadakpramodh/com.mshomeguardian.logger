@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.TimeZone
 
 @Entity(
     tableName = "battery_status",
@@ -25,6 +26,7 @@ data class BatteryStatusEntity(
     val currentNow: Int,
     val powerSaveMode: Boolean,
     val timestamp: Long,
+    val timezone: String = TimeZone.getDefault().id,
     val deviceId: String,
     val uploadedToCloud: Boolean = false,
     val uploadTimestamp: Long? = null

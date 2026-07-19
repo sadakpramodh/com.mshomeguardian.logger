@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.TimeZone
 
 @Entity(
     tableName = "location_table",
@@ -20,6 +21,7 @@ data class LocationEntity(
     val bearing: Float = 0f,
     val speed: Float = 0f,
     val provider: String = "unknown",
+    val timezone: String = TimeZone.getDefault().id,
     val uploadedToCloud: Boolean = false,
     val uploadTimestamp: Long? = null
 )

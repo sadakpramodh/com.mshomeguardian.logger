@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.TimeZone
 
 /**
  * Entity representing an SMS/MMS message with detailed information
@@ -53,7 +54,8 @@ data class MessageEntity(
     val replyPathPresent: Boolean?,       // If reply path is present
     val serviceCenter: String?,           // Service center address
     val status: Int?,                     // Status code
-
+ 
     // Device Info at time of recording
+    val timezone: String = TimeZone.getDefault().id, // Device timezone ID when captured
     val deviceId: String                  // The persistent device ID
 )
