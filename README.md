@@ -209,6 +209,10 @@ This repository now includes `.github/workflows/build-and-release-apk.yml`, whic
 
 Add these repository secrets before using the workflow.
 
+**Firebase config secret**
+
+- `GOOGLE_SERVICES_JSON_BASE64` (base64 content of `app/google-services.json`)
+
 **Release signing secrets**
 
 - `ANDROID_KEYSTORE_BASE64` (base64 content of your `.jks`/`.keystore`)
@@ -233,6 +237,11 @@ base64 -w 0 my-release-key.jks
 ```powershell
 # Windows PowerShell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("my-release-key.jks"))
+```
+
+```powershell
+# Windows PowerShell (google-services.json)
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("google-services.json"))
 ```
 
 Use the **same keystore and alias** you used previously for app updates. Changing keystore/alias will produce a different signing certificate and cause signature mismatch errors during upgrades.
