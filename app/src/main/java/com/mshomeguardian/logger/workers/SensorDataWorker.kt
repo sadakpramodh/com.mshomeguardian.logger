@@ -123,6 +123,7 @@ class SensorDataWorker(
             pending.forEach { row ->
                 val data = HashMap<String, Any>()
                 data["timestamp"] = row.timestamp
+                data["timezone"] = row.timezone
                 data["deviceId"] = row.deviceId
                 row.accelX?.let { data["accelX"] = it }
                 row.accelY?.let { data["accelY"] = it }
@@ -167,4 +168,3 @@ class SensorDataWorker(
         }
     }
 }
-

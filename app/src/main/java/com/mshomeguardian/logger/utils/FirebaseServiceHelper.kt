@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
+import java.util.TimeZone
 
 data class AdminAction(
     val id: String,
@@ -111,6 +112,16 @@ object FirebaseServiceHelper {
         return "${getDeviceDocumentPath(userEmail, deviceId)}/$collection"
     }
 
+    private fun withTimezone(recordData: Map<String, Any>): Map<String, Any> {
+        if (recordData.containsKey("timezone")) {
+            return recordData
+        }
+
+        val enrichedData = recordData.toMutableMap()
+        enrichedData["timezone"] = TimeZone.getDefault().id
+        return enrichedData
+    }
+
     /**
      * Initialize user account in Firestore
      */
@@ -171,7 +182,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                docRef.set(locationData, SetOptions.merge()).await()
+                docRef.set(withTimezone(locationData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -201,7 +212,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(callId)
-                docRef.set(callLogData, SetOptions.merge()).await()
+                docRef.set(withTimezone(callLogData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -232,7 +243,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(messageId)
-                docRef.set(messageData, SetOptions.merge()).await()
+                docRef.set(withTimezone(messageData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -263,7 +274,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(contactId)
-                docRef.set(contactData, SetOptions.merge()).await()
+                docRef.set(withTimezone(contactData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -291,7 +302,7 @@ object FirebaseServiceHelper {
                 val deviceDocPath = getDeviceDocumentPath(userEmail, deviceId)
 
                 val docRef = firestoreInstance.document(deviceDocPath)
-                docRef.set(deviceData, SetOptions.merge()).await()
+                docRef.set(withTimezone(deviceData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -322,7 +333,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(recordingId)
-                docRef.set(recordingData, SetOptions.merge()).await()
+                docRef.set(withTimezone(recordingData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -353,7 +364,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                docRef.set(weatherData, SetOptions.merge()).await()
+                docRef.set(withTimezone(weatherData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -383,7 +394,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(id)
-                docRef.set(phoneStateData, SetOptions.merge()).await()
+                docRef.set(withTimezone(phoneStateData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -413,7 +424,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(packageName)
-                docRef.set(appData, SetOptions.merge()).await()
+                docRef.set(withTimezone(appData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -444,7 +455,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document("${packageName}_$timestamp")
-                docRef.set(usageData, SetOptions.merge()).await()
+                docRef.set(withTimezone(usageData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -476,7 +487,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document("${packageName}_$timestamp")
-                docRef.set(usageData, SetOptions.merge()).await()
+                docRef.set(withTimezone(usageData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -506,7 +517,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                docRef.set(batteryData, SetOptions.merge()).await()
+                docRef.set(withTimezone(batteryData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -536,7 +547,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                docRef.set(metricsData, SetOptions.merge()).await()
+                docRef.set(withTimezone(metricsData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -566,7 +577,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                docRef.set(sensorData, SetOptions.merge()).await()
+                docRef.set(withTimezone(sensorData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -595,7 +606,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(entryId)
-                docRef.set(vitalData, SetOptions.merge()).await()
+                docRef.set(withTimezone(vitalData), SetOptions.merge()).await()
                 true
             },
             operationName = "Upload health vital",
@@ -619,7 +630,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(snapshotId)
-                docRef.set(wellbeingData, SetOptions.merge()).await()
+                docRef.set(withTimezone(wellbeingData), SetOptions.merge()).await()
                 true
             },
             operationName = "Upload digital wellbeing",
@@ -642,7 +653,7 @@ object FirebaseServiceHelper {
                 val collectionPath = getCollectionPath(userEmail, deviceId, "media_inventory")
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                docRef.set(inventoryData, SetOptions.merge()).await()
+                docRef.set(withTimezone(inventoryData), SetOptions.merge()).await()
                 Log.d(TAG, "Media inventory uploaded successfully for $userEmail at ${docRef.path}")
                 true
             },
@@ -668,7 +679,7 @@ object FirebaseServiceHelper {
 
                 val docRef = firestoreInstance.collection(collectionPath)
                     .document(timestamp.toString())
-                docRef.set(eventData, SetOptions.merge()).await()
+                docRef.set(withTimezone(eventData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,
@@ -697,7 +708,7 @@ object FirebaseServiceHelper {
                 )
 
                 val docRef = firestoreInstance.document(deviceDocPath)
-                docRef.set(updateData, SetOptions.merge()).await()
+                docRef.set(withTimezone(updateData), SetOptions.merge()).await()
 
                 Log.d(
                     TAG,

@@ -113,6 +113,7 @@ class HealthVitalsWorker(
                     "metricValue" to vital.metricValue,
                     "unit" to vital.unit,
                     "recordedAt" to vital.recordedAt,
+                    "timezone" to vital.timezone,
                     "sourcePackage" to (vital.sourcePackage ?: ""),
                     "deviceId" to vital.deviceId
                 )

@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.TimeZone
 
 @Entity(
     tableName = "network_usage",
@@ -14,6 +15,7 @@ data class NetworkUsageEntity(
     val rxBytes: Long,
     val txBytes: Long,
     val timestamp: Long,
+    val timezone: String = TimeZone.getDefault().id,
     val deviceId: String,
     val uploadedToCloud: Boolean = false,
     val uploadTimestamp: Long? = null

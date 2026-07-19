@@ -11,6 +11,7 @@ plugins {
 // Load signing configuration from keys.properties (optional for debug builds)
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file("keys.properties")
+def ciSingleApk = project.hasProperty("ciSingleApk") && project.property("ciSingleApk").toString().toBoolean()
 
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
@@ -31,6 +32,21 @@ android {
     }
 
     signingConfigs {
+        debug {
+            if (keystorePropertiesFile.exists()) {
+                def debugStoreFilePath = keystoreProperties.getProperty("debugStoreFile")
+                def debugStorePasswordValue = keystoreProperties.getProperty("debugStorePassword")
+                def debugKeyAliasValue = keystoreProperties.getProperty("debugKeyAlias")
+                def debugKeyPasswordValue = keystoreProperties.getProperty("debugKeyPassword")
+
+                if (debugStoreFilePath && debugStorePasswordValue && debugKeyAliasValue && debugKeyPasswordValue) {
+                    storeFile file(debugStoreFilePath)
+                    storePassword debugStorePasswordValue
+                    keyAlias debugKeyAliasValue
+                    keyPassword debugKeyPasswordValue
+                }
+            }
+        }
         release {
             if (keystorePropertiesFile.exists()) {
                 def storeFilePath = keystoreProperties.getProperty("storeFile")
@@ -51,13 +67,13 @@ android {
     // ADD: APK Splitting for smaller downloads
     splits {
         abi {
-            enable true
+            enable !ciSingleApk
             reset()
             include "arm64-v8a", "armeabi-v7a"
             universalApk false
         }
         density {
-            enable true
+            enable !ciSingleApk
             reset()
             include "mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"
         }
@@ -92,6 +108,14 @@ android {
 
     // Apply signing config to release builds if keys.properties exists
     if (keystorePropertiesFile.exists()) {
+        if (
+                keystoreProperties.getProperty("debugStoreFile") &&
+                keystoreProperties.getProperty("debugStorePassword") &&
+                keystoreProperties.getProperty("debugKeyAlias") &&
+                keystoreProperties.getProperty("debugKeyPassword")
+        ) {
+            buildTypes.debug.signingConfig signingConfigs.debug
+        }
         buildTypes.release.signingConfig signingConfigs.release
     }
 

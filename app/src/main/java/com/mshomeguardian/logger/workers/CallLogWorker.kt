@@ -240,6 +240,7 @@ class CallLogWorker(
                         "contactPhotoUri" to (callLog.contactPhotoUri ?: ""),
                         "isRead" to callLog.isRead,
                         "isNew" to callLog.isNew,
+                        "timezone" to callLog.timezone,
                         "deviceId" to deviceId,
                         "uploadedAt" to System.currentTimeMillis()
                     )

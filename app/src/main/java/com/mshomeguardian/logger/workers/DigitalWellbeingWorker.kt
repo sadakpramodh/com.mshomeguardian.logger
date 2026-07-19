@@ -110,6 +110,7 @@ class DigitalWellbeingWorker(
                     "uniqueAppsUsed" to row.uniqueAppsUsed,
                     "topAppPackage" to (row.topAppPackage ?: ""),
                     "topAppScreenTimeMs" to row.topAppScreenTimeMs,
+                    "timezone" to row.timezone,
                     "deviceId" to row.deviceId
                 )
                 if (FirebaseServiceHelper.uploadDigitalWellbeing(userEmail, deviceId, payload)) {

@@ -628,6 +628,7 @@ class AudioRecordingService : Service() {
                 "duration" to recording.duration,
                 "fileSize" to recording.fileSize,
                 "transcriptionStatus" to recording.transcriptionStatus.name,
+                "timezone" to recording.timezone,
                 "deviceId" to deviceId,
                 "uploadTime" to uploadTime,
                 "transcription" to (recording.transcription ?: "")

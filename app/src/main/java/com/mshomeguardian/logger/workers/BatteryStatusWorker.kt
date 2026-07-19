@@ -99,6 +99,7 @@ class BatteryStatusWorker(
                     "currentNow" to row.currentNow,
                     "powerSaveMode" to row.powerSaveMode,
                     "timestamp" to row.timestamp,
+                    "timezone" to row.timezone,
                     "deviceId" to row.deviceId
                 )
                 if (FirebaseServiceHelper.uploadBatteryStatus(userEmail, deviceId, data)) {

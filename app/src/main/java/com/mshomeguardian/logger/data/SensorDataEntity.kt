@@ -3,6 +3,7 @@ package com.mshomeguardian.logger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.TimeZone
 
 @Entity(
     tableName = "sensor_data",
@@ -14,6 +15,7 @@ import androidx.room.PrimaryKey
 data class SensorDataEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestamp: Long,
+    val timezone: String = TimeZone.getDefault().id,
     val deviceId: String,
     // Accelerometer (m/s²)
     val accelX: Float? = null,
