@@ -42,7 +42,7 @@ jobs:
             echo "Missing required secret: ANDROID_KEYSTORE_BASE64"
             exit 1
           fi
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release-keystore.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/app/release-keystore.jks"
 
       - name: Decode debug keystore from GitHub Secrets
         env:
@@ -52,7 +52,7 @@ jobs:
             echo "Missing required secret: DEBUG_KEYSTORE_BASE64"
             exit 1
           fi
-          echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/debug-keystore.jks"
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/app/debug-keystore.jks"
 
       - name: Generate keys.properties for Gradle signing
         env:
